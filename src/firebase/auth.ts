@@ -1,0 +1,317 @@
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
+
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
+import { auth, db, storage, useMemoryAuthPersistence } from "./config";
+import { findPendingUserByEmail, requestPendingUser } from "../services/registration.service";
+
+export type AuthCredentials = {
+  email: string;
+  password: string;
+  name?: string;
+};
+
+export type DbUser = {
+  docId: string;
+  uid: string;
+  email: string;
+  name: string;
+  photoURL: string;
+  role: string;
+  status: string;
+  roleId?: string;
+  preferences: UserPreferences;
+};
+
+export type UserPreferences = {
+  theme: string;
+  language: string;
+};
+
+const emailUnverifiedStatus = "email-unverified";
+
+function readString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function readPreferences(value: unknown): UserPreferences {
+  if (!value || typeof value !== "object") {
+    return {
+      theme: "light",
+      language: "en",
+    };
+  }
+
+  const preferences = value as Record<string, unknown>;
+
+  return {
+    theme: readString(preferences.theme, "light"),
+    language: readString(preferences.language, "en"),
+  };
+}
+
+async function readRole(data: Record<string, unknown>, uid: string, email: string) {
+  const roleFromUser = readString(data.role);
+  const roleId = readString(data.roleId);
+
+  if (roleId) {
+    const roleDoc = await getDoc(doc(db, "roles", roleId));
+
+    if (roleDoc.exists()) {
+      const roleData = roleDoc.data();
+
+      return {
+        role: readString(roleData.name, readString(roleData.role, roleFromUser)),
+      };
+    }
+  }
+
+  const rolesByUid = await getDocs(query(collection(db, "roles"), where("uid", "==", uid)));
+
+  if (!rolesByUid.empty) {
+    const roleData = rolesByUid.docs[0].data();
+
+    return {
+      role: readString(roleData.name, readString(roleData.role, roleFromUser)),
+    };
+  }
+
+  const rolesByEmail = await getDocs(query(collection(db, "roles"), where("email", "==", email.trim())));
+
+  if (!rolesByEmail.empty) {
+    const roleData = rolesByEmail.docs[0].data();
+
+    return {
+      role: readString(roleData.name, readString(roleData.role, roleFromUser)),
+    };
+  }
+
+  return {
+    role: roleFromUser || "user",
+  };
+}
+
+async function toDbUser(
+  data: Record<string, unknown>,
+  docId: string,
+  fallbackUid: string,
+  fallbackEmail: string,
+): Promise<DbUser> {
+  const email = typeof data.email === "string" ? data.email : fallbackEmail;
+  const uid = readString(data.uid, fallbackUid);
+  const role = await readRole(data, uid, email);
+
+  return {
+    docId,
+    uid,
+    email,
+    name: readString(data.name),
+    photoURL: readString(data.photoURL),
+    role: role.role,
+    status: readString(data.status, "approved"),
+    roleId: readString(data.roleId) || undefined,
+    preferences: readPreferences(data.preferences),
+  };
+}
+
+async function findUserProfile(uid: string, email: string) {
+  const userDoc = await getDoc(doc(db, "users", uid));
+
+  if (userDoc.exists()) {
+    return toDbUser(userDoc.data(), userDoc.id, uid, email);
+  }
+
+  const usersRef = collection(db, "users");
+  const emailQuery = query(usersRef, where("email", "==", email.trim()));
+  const emailSnapshot = await getDocs(emailQuery);
+
+  if (!emailSnapshot.empty) {
+    return toDbUser(emailSnapshot.docs[0].data(), emailSnapshot.docs[0].id, uid, email);
+  }
+
+  return null;
+}
+
+export async function loginWithEmail({ email, password }: AuthCredentials) {
+  await useMemoryAuthPersistence();
+
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  await credential.user.reload();
+  const profile = await findUserProfile(credential.user.uid, credential.user.email ?? email);
+
+  if (!profile) {
+    await signOut(auth);
+    throw new Error("User profile not found in database.");
+  }
+
+  if (profile.status === emailUnverifiedStatus) {
+    if (!credential.user.emailVerified) {
+      await signOut(auth);
+      throw new Error("Verify your email address before your registration request is sent. Check your inbox for the Firebase verification email.");
+    }
+
+    await updateDoc(doc(db, "users", profile.docId), {
+      status: "pending",
+      emailVerified: true,
+      updatedAt: serverTimestamp(),
+    });
+
+    await requestPendingUser({
+      name: profile.name,
+      email: profile.email,
+      uid: profile.uid,
+      role: profile.role || "user",
+    });
+
+    await signOut(auth);
+    throw new Error("Registration request submitted. Wait for admin approval before signing in.");
+  }
+
+  if (profile.status === "pending") {
+    await signOut(auth);
+    throw new Error("Account is waiting for admin approval.");
+  }
+
+  if (profile.status === "denied") {
+    await signOut(auth);
+    throw new Error("Account request was denied.");
+  }
+
+  return profile;
+}
+
+export async function registerWithEmail({ email, password, name }: AuthCredentials) {
+  await useMemoryAuthPersistence();
+
+  const pendingUser = await findPendingUserByEmail(email);
+
+  if (pendingUser?.status === "pending") {
+    throw new Error("Registration request is waiting for admin approval.");
+  }
+
+  if (pendingUser?.status === "denied") {
+    throw new Error("Registration request was denied.");
+  }
+
+
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  const user = credential.user;
+  const displayName = name?.trim() ?? "";
+
+  if (displayName) {
+    await updateProfile(user, { displayName });
+  }
+
+  const profile: DbUser = {
+    docId: user.uid,
+    uid: user.uid,
+    email: user.email ?? email.trim(),
+    name: displayName,
+    photoURL: "",
+    role: "user",
+    status: emailUnverifiedStatus,
+    preferences: {
+      theme: "light",
+      language: "en",
+    },
+  };
+
+  await setDoc(doc(db, "users", user.uid), {
+    ...profile,
+    emailVerified: false,
+    createdAt: serverTimestamp(),
+  });
+
+  await sendEmailVerification(user);
+
+  await signOut(auth);
+  throw new Error("Verification email sent. Verify your email address, then sign in again to submit your registration request for admin approval.");
+}
+
+export async function resetPassword(email: string) {
+  await useMemoryAuthPersistence();
+  return sendPasswordResetEmail(auth, email);
+}
+
+export async function updateUserPersonalization(
+  user: DbUser,
+  update: {
+    name: string;
+    preferences?: Partial<UserPreferences>;
+    photoURL?: string;
+  },
+) {
+  const preferences = {
+    ...user.preferences,
+    ...update.preferences,
+  };
+  const photoURL = update.photoURL ?? user.photoURL;
+
+  await updateDoc(doc(db, "users", user.docId), {
+    name: update.name,
+    photoURL,
+    preferences,
+    updatedAt: serverTimestamp(),
+  });
+
+  return {
+    ...user,
+    name: update.name,
+    photoURL,
+    preferences,
+  };
+}
+
+async function deleteProfilePictureFromStorage(photoURL: string) {
+  if (!photoURL) {
+    return;
+  }
+
+  try {
+    await deleteObject(ref(storage, photoURL));
+  } catch (deleteError) {
+    const code = typeof deleteError === "object" && deleteError ? (deleteError as { code?: unknown }).code : "";
+
+    if (code !== "storage/object-not-found") {
+      throw deleteError;
+    }
+  }
+}
+
+export async function uploadUserProfilePicture(user: DbUser, file: File) {
+  const extension = file.name.split(".").pop() || "jpg";
+  const pictureRef = ref(storage, `profile-pictures/${user.uid}/${Date.now()}.${extension}`);
+
+  await uploadBytes(pictureRef, file);
+  return getDownloadURL(pictureRef);
+}
+
+export async function removeUserProfilePicture(user: DbUser) {
+  await deleteProfilePictureFromStorage(user.photoURL);
+
+  await updateDoc(doc(db, "users", user.docId), {
+    photoURL: "",
+    updatedAt: serverTimestamp(),
+  });
+
+  return {
+    ...user,
+    photoURL: "",
+  };
+}
+
+export function logout() {
+  return signOut(auth);
+}

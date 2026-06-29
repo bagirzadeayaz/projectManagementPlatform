@@ -10,14 +10,18 @@ import {
   deleteProject,
   generateProjectDescription,
   getProject,
+  getProjectNotes,
+  saveProjectNote,
   getTodayDateInputValue,
   isPastDeadline,
   PROJECT_STATUSES,
   updateProject,
   type Project,
+  type ProjectNote,
 } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
 import { getProjectStatusLabel } from "../utils/labels";
+import { PageHeader, SectionHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -67,6 +71,36 @@ function ProjectUserAvatar({ projectUser }: { projectUser: ProjectUser }) {
   );
 }
 
+function ProjectNoteAvatar({ note }: { note: ProjectNote }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const displayName = note.userName || note.userEmail;
+  const showPhoto = Boolean(note.userPhotoURL && !imageFailed);
+
+  return (
+    <span className="project-member-avatar project-note-avatar" aria-hidden="true">
+      {showPhoto ? (
+        <img alt="" src={note.userPhotoURL} onError={() => setImageFailed(true)} />
+      ) : (
+        <span>{getUserInitials(displayName)}</span>
+      )}
+    </span>
+  );
+}
+
+function formatNoteDate(createdAtMs: number, language: string) {
+  if (!createdAtMs) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(language === "az" ? "az-AZ" : "en-US", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(createdAtMs));
+}
+
 export function ProjectDetailsPage() {
   const params = useParams<{ projectId?: string | string[] }>();
   const router = useRouter();
@@ -85,17 +119,26 @@ export function ProjectDetailsPage() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [deadline, setDeadline] = useState("");
+  const [leaderId, setLeaderId] = useState("");
   const [userIds, setUserIds] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [deadlineError, setDeadlineError] = useState<string | null>(null);
   const [usersSelectionError, setUsersSelectionError] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ProjectNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteError, setNoteError] = useState<string | null>(null);
   const minimumDeadline = getTodayDateInputValue();
   const canDelete = user ? canManageProjects(user.role) : false;
   const isProjectUser = Boolean(user && project?.userIds.includes(user.uid));
-  const canEdit = canDelete || isProjectUser;
-  const canEditUsers = canDelete;
+  const isProjectLeader = Boolean(user && project?.leaderId === user.uid);
+  const canEdit = canDelete || isProjectLeader;
+  const canViewNotes = Boolean(project && user && (canDelete || isProjectUser));
+  const canWriteNote = Boolean(project && user && isProjectUser);
+  const canEditUsers = canDelete || isProjectLeader;
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
     ? users.filter((projectUser) =>
@@ -106,6 +149,13 @@ export function ProjectDetailsPage() {
     project?.userIds
       .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser)) ?? [];
+  const activeParticipantUsers = userIds
+    .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
+    .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
+  const isLeaderInActiveParticipants = activeParticipantUsers.some((projectUser) => projectUser.uid === leaderId);
+  const currentProjectUserIds = new Set(project?.userIds ?? []);
+  const visibleNotes = notes.filter((note) => currentProjectUserIds.has(note.userId));
+  const ownNote = user ? visibleNotes.find((note) => note.userId === user.uid) : undefined;
 
   useEffect(() => {
     if (!user || !projectId) {
@@ -137,6 +187,7 @@ export function ProjectDetailsPage() {
         setDescription(loadedProject.description);
         setStatus(loadedProject.status);
         setDeadline(loadedProject.deadline);
+        setLeaderId(loadedProject.leaderId);
         setUserIds(loadedProject.userIds);
       } catch (projectError) {
         if (active) {
@@ -156,6 +207,53 @@ export function ProjectDetailsPage() {
     };
   }, [projectId, t, user]);
 
+  useEffect(() => {
+    if (!project || !user || !canViewNotes) {
+      setNotes([]);
+      setNoteDraft("");
+      return;
+    }
+
+    let active = true;
+
+    const loadNotes = async () => {
+      setNotesLoading(true);
+      setNoteError(null);
+
+      try {
+        const loadedNotes = await getProjectNotes(project.id);
+        const activeProjectUserIds = new Set(project.userIds);
+
+        if (active) {
+          setNotes(loadedNotes.filter((note) => activeProjectUserIds.has(note.userId)));
+        }
+      } catch (notesError) {
+        if (active) {
+          setNoteError(notesError instanceof Error ? notesError.message : t("notesLoadFailed"));
+        }
+      } finally {
+        if (active) {
+          setNotesLoading(false);
+        }
+      }
+    };
+
+    void loadNotes();
+
+    return () => {
+      active = false;
+    };
+  }, [canViewNotes, project, t, user]);
+
+  useEffect(() => {
+    if (!canWriteNote) {
+      setNoteDraft("");
+      return;
+    }
+
+    setNoteDraft(ownNote?.text ?? "");
+  }, [canWriteNote, ownNote?.text]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -172,7 +270,10 @@ export function ProjectDetailsPage() {
       return;
     }
 
-    if (canEditUsers && userIds.length === 0) {
+    const nextLeaderId = canDelete ? leaderId || project.leaderId : project.leaderId;
+    const nextUserIds = Array.from(new Set([nextLeaderId, ...userIds].filter(Boolean)));
+
+    if (canEditUsers && nextUserIds.length === 0) {
       setUsersSelectionError(t("selectProjectUser"));
       return;
     }
@@ -182,7 +283,8 @@ export function ProjectDetailsPage() {
       description: description.trim(),
       status: status.trim() || "active",
       deadline,
-      userIds: canEditUsers ? userIds : project.userIds,
+      leaderId: nextLeaderId,
+      userIds: canEditUsers ? nextUserIds : project.userIds,
     };
 
     setSaving(true);
@@ -230,6 +332,43 @@ export function ProjectDetailsPage() {
     }
   };
 
+  const handleAddNote = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!project || !user || !canWriteNote) {
+      return;
+    }
+
+    const text = noteDraft.trim();
+    setNoteError(null);
+
+    if (!text) {
+      setNoteError(t("noteRequired"));
+      return;
+    }
+
+    setNoteSaving(true);
+
+    try {
+      const savedNote = await saveProjectNote(project.id, {
+        text,
+        userEmail: user.email,
+        userId: user.uid,
+        userName: user.name || user.email,
+        userPhotoURL: user.photoURL,
+      });
+
+      setNotes((currentNotes) => [
+        savedNote,
+        ...currentNotes.filter((currentNote) => currentNote.userId !== savedNote.userId),
+      ]);
+    } catch (projectNoteError) {
+      setNoteError(projectNoteError instanceof Error ? projectNoteError.message : t("noteSaveFailed"));
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
   const cancelEditing = () => {
     if (project) {
       setName(project.name);
@@ -237,6 +376,7 @@ export function ProjectDetailsPage() {
       setDescription(project.description);
       setStatus(project.status);
       setDeadline(project.deadline);
+      setLeaderId(project.leaderId);
       setUserIds(project.userIds);
     }
 
@@ -247,7 +387,7 @@ export function ProjectDetailsPage() {
   };
 
   const toggleProjectUser = (selectedUserId: string) => {
-    if (!canEditUsers) {
+    if (!canEditUsers || selectedUserId === leaderId) {
       return;
     }
 
@@ -269,13 +409,9 @@ export function ProjectDetailsPage() {
 
   return (
     <main className="projects-page project-details-page">
-      <header className="projects-header">
-        <div>
-          <p className="auth-kicker">{t("projectDetails")}</p>
-          <h1>{project?.name || t("project")}</h1>
-          {project ? <Badge className={getStatusClass(project.status)}>{getProjectStatusLabel(project.status, language)}</Badge> : null}
-        </div>
-        <div className="projects-userbar">
+      <PageHeader
+        actions={
+          <>
           <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
             {t("projects")}
           </Link>
@@ -284,8 +420,12 @@ export function ProjectDetailsPage() {
               {t("edit")}
             </Button>
           ) : null}
-        </div>
-      </header>
+          </>
+        }
+        eyebrow={t("projectDetails")}
+        subtitle={project ? <Badge className={getStatusClass(project.status)}>{getProjectStatusLabel(project.status, language)}</Badge> : null}
+        title={project?.name || t("project")}
+      />
 
       {loading ? <section className="empty-state">{t("loadingProject")}</section> : null}
       {error ? <Alert variant="destructive">{error}</Alert> : null}
@@ -324,13 +464,11 @@ export function ProjectDetailsPage() {
           </div>
 
           <section className="project-team-panel">
-            <div className="project-section-heading">
-              <div>
-                <p className="auth-kicker">{t("assignedTeam")}</p>
-                <h2>{t("usersWorkingOnProject")}</h2>
-              </div>
-              <Badge variant="secondary">{selectedProjectUsers.length || project.userIds.length}</Badge>
-            </div>
+            <SectionHeader
+              actions={<Badge variant="secondary">{selectedProjectUsers.length || project.userIds.length}</Badge>}
+              eyebrow={t("assignedTeam")}
+              title={t("participants")}
+            />
             {selectedProjectUsers.length > 0 ? (
               <div className="project-member-list">
                 {selectedProjectUsers.map((projectUser) => {
@@ -341,7 +479,7 @@ export function ProjectDetailsPage() {
                       <ProjectUserAvatar projectUser={projectUser} />
                       <div>
                         <strong>{displayName}</strong>
-                        <small>{projectUser.email}</small>
+                        <small>{projectUser.email} - {projectUser.uid === project.leaderId ? t("projectLeader") : t("participant")}</small>
                       </div>
                     </div>
                   );
@@ -351,6 +489,58 @@ export function ProjectDetailsPage() {
               <p className="project-users-note">{t("noUserAssigned")}</p>
             )}
           </section>
+
+          {canViewNotes ? (
+            <section className="project-notes-panel">
+              <SectionHeader
+                actions={<Badge variant="secondary">{visibleNotes.length}</Badge>}
+                eyebrow={t("project")}
+                title={t("notes")}
+              />
+
+              {canWriteNote ? (
+                <form className="project-note-form" onSubmit={handleAddNote}>
+                  <Textarea
+                    maxLength={800}
+                    onChange={(event) => {
+                      setNoteDraft(event.target.value);
+                      setNoteError(null);
+                    }}
+                    placeholder={t("notePlaceholder")}
+                    rows={3}
+                    value={noteDraft}
+                  />
+                  <div className="project-note-form-footer">
+                    <span className="char-count">{`${noteDraft.length}/800`}</span>
+                    <Button disabled={noteSaving || !noteDraft.trim()} size="sm" type="submit">
+                      {noteSaving ? t("savingNote") : ownNote ? t("updateNote") : t("addNote")}
+                    </Button>
+                  </div>
+                </form>
+              ) : null}
+
+              {noteError ? <Alert variant="destructive">{noteError}</Alert> : null}
+              {notesLoading ? <p className="project-users-note">{t("loadingNotes")}</p> : null}
+              {!notesLoading && visibleNotes.length === 0 ? <p className="project-users-note">{t("noNotes")}</p> : null}
+              {visibleNotes.length > 0 ? (
+                <div className="project-notes-list">
+                  {visibleNotes.map((note) => (
+                    <article className="project-note-item" key={note.id}>
+                      <ProjectNoteAvatar note={note} />
+                      <div>
+                        <header>
+                          <strong>{note.userName || note.userEmail}</strong>
+                          <span>{formatNoteDate(note.updatedAtMs, language)}</span>
+                        </header>
+                        <p>{note.text}</p>
+                        <small>{t("writtenBy")}: {note.userEmail}</small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {canEdit ? (
             <CardFooter className="project-detail-actions">
@@ -410,8 +600,31 @@ export function ProjectDetailsPage() {
             />
           </FieldLabel>
 
+          {canDelete ? (
+            <FieldLabel>
+              <span>{t("projectLeader")}</span>
+              <Select
+                onChange={(event) => {
+                  setLeaderId(event.target.value);
+                  setUserIds((currentUserIds) => Array.from(new Set([event.target.value, ...currentUserIds])));
+                }}
+                required
+                value={leaderId}
+              >
+                {!isLeaderInActiveParticipants && leaderId ? (
+                  <option value={leaderId}>{t("projectLeader")}</option>
+                ) : null}
+                {activeParticipantUsers.map((projectUser) => (
+                  <option key={projectUser.uid} value={projectUser.uid}>
+                    {projectUser.name || projectUser.email}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+          ) : null}
+
           <fieldset className="project-users-field">
-            <legend>{t("usersWorkingOnProject")}</legend>
+            <legend>{t("participants")}</legend>
             <label className="project-users-search">
               <span>{t("searchUsers")}</span>
               <Input
@@ -431,11 +644,11 @@ export function ProjectDetailsPage() {
                 <label className="project-user-option" key={projectUser.uid}>
                   <Checkbox
                     checked={userIds.includes(projectUser.uid)}
-                    disabled={!canEditUsers}
+                    disabled={!canEditUsers || projectUser.uid === leaderId}
                     onChange={() => toggleProjectUser(projectUser.uid)}
                   />
                   <span>{projectUser.name || projectUser.email}</span>
-                  <small>{projectUser.email}</small>
+                  <small>{projectUser.uid === leaderId ? t("projectLeader") : projectUser.email}</small>
                 </label>
               ))}
             </div>

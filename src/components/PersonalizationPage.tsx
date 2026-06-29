@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { useAuth } from "../hooks/useAuth";
 import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
+import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
 import { Button, buttonVariants } from "./ui/button";
@@ -195,18 +196,16 @@ export function PersonalizationPage() {
 
   return (
     <main className="projects-page personalization-page">
-      <header className="projects-header">
-        <div>
-          <p className="auth-kicker">{t("profile")}</p>
-          <h1>{user.name || t("profile")}</h1>
-          <p className="projects-subtitle">{user.email}</p>
-        </div>
-        <div className="projects-userbar">
+      <PageHeader
+        actions={
           <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
             {t("projects")}
           </Link>
-        </div>
-      </header>
+        }
+        eyebrow={t("profile")}
+        subtitle={user.email}
+        title={user.name || t("profile")}
+      />
 
       <Card as="form" className="personalization-form" onSubmit={handleSubmit}>
         <section className="profile-picture-row">
@@ -265,6 +264,7 @@ export function PersonalizationPage() {
             <div className="profile-crop-frame">
               <img
                 alt={t("imageCropPreview")}
+                className="profile-crop-image"
                 src={cropSourceUrl}
                 style={{
                   transform: `translate(${cropSettings.offsetX / 2}%, ${cropSettings.offsetY / 2}%) scale(${cropSettings.zoom})`,

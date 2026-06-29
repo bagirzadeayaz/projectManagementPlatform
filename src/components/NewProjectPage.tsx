@@ -14,6 +14,7 @@ import {
   PROJECT_STATUSES,
 } from "../services/project.service";
 import { getProjectStatusLabel } from "../utils/labels";
+import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
 import { Button, buttonVariants } from "./ui/button";
@@ -23,10 +24,6 @@ import { FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-
-function canManageProjects(role: string) {
-  return role.trim().toLowerCase() === "admin";
-}
 
 export function NewProjectPage() {
   const router = useRouter();
@@ -51,22 +48,12 @@ export function NewProjectPage() {
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
     : users;
+  const selectedUserIds = user ? Array.from(new Set([user.uid, ...userIds])) : userIds;
 
   if (!user) {
     return (
       <main className="auth-page">
         <AuthForm />
-      </main>
-    );
-  }
-
-  if (!canManageProjects(user.role)) {
-    return (
-      <main className="projects-page personalization-page">
-        <section className="empty-state">{t("notAllowedManageProjects")}</section>
-        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
-          {t("backToProjects")}
-        </Link>
       </main>
     );
   }
@@ -81,18 +68,14 @@ export function NewProjectPage() {
       return;
     }
 
-    if (userIds.length === 0) {
-      setUsersSelectionError(t("selectProjectUser"));
-      return;
-    }
-
     await createProject(
       {
         name: name.trim() || t("projectNameFallback"),
         description: description.trim(),
         status,
         deadline,
-        userIds,
+        leaderId: user.uid,
+        userIds: selectedUserIds,
       },
       user.uid,
     );
@@ -124,18 +107,16 @@ export function NewProjectPage() {
 
   return (
     <main className="projects-page personalization-page">
-      <header className="projects-header">
-        <div>
-          <p className="auth-kicker">{t("admin")}</p>
-          <h1>{t("addProject")}</h1>
-          <p className="projects-subtitle">{language === "az" ? "Firestore-da layihə yaradın." : "Create a project in Firestore."}</p>
-        </div>
-        <div className="projects-userbar">
+      <PageHeader
+        actions={
           <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
             {t("projects")}
           </Link>
-        </div>
-      </header>
+        }
+        eyebrow={t("workspace")}
+        subtitle={t("projectCreatorSubtitle")}
+        title={t("addProject")}
+      />
 
       <Card className="personalization-form new-project-form" as="form" onSubmit={handleSubmit}>
         <FieldLabel>
@@ -169,7 +150,7 @@ export function NewProjectPage() {
         </FieldLabel>
 
         <fieldset className="project-users-field">
-          <legend>{t("usersWorkingOnProject")}</legend>
+          <legend>{t("participants")}</legend>
           <label className="project-users-search">
             <span>{t("searchUsers")}</span>
             <Input
@@ -188,11 +169,12 @@ export function NewProjectPage() {
             {filteredUsers.map((projectUser) => (
               <label className="project-user-option" key={projectUser.uid}>
                 <Checkbox
-                  checked={userIds.includes(projectUser.uid)}
+                  checked={selectedUserIds.includes(projectUser.uid)}
+                  disabled={projectUser.uid === user.uid}
                   onChange={() => toggleProjectUser(projectUser.uid)}
                 />
                 <span>{projectUser.name || projectUser.email}</span>
-                <small>{projectUser.email}</small>
+                <small>{projectUser.uid === user.uid ? t("projectLeader") : projectUser.email}</small>
               </label>
             ))}
           </div>

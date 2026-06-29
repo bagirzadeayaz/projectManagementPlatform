@@ -6,6 +6,7 @@ import {
   type DbUser,
   loginWithEmail,
   logout,
+  observeAuthProfile,
   registerWithEmail,
   removeUserProfilePicture,
   resetPassword,
@@ -78,6 +79,7 @@ function toFriendlyAuthError(error: unknown, language: Language) {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<DbUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [language, setLanguageState] = useState<Language>(defaultLanguage);
@@ -106,6 +108,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLanguage(normalizeLanguage(user.preferences.language));
     }
   }, [user?.preferences.language]);
+
+  useEffect(() => {
+    let active = true;
+
+    const unsubscribe = observeAuthProfile(
+      (profile) => {
+        if (!active) {
+          return;
+        }
+
+        setUser(profile);
+        setAuthReady(true);
+      },
+      (authError) => {
+        if (!active) {
+          return;
+        }
+
+        setError(toFriendlyAuthError(authError, language));
+        setAuthReady(true);
+      },
+    );
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [language]);
 
   const runAuthAction = async <Result,>(action: () => Promise<Result>) => {
     setBusy(true);
@@ -183,7 +213,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, busy, error, language],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {authReady ? (
+        children
+      ) : (
+        <main className="app-loading-screen" aria-busy="true" aria-live="polite">
+          <section className="app-loading-card">
+            <span className="app-loading-spinner" aria-hidden="true" />
+            <div>
+              <p className="auth-kicker">{translate(language, "workspace")}</p>
+              <h1>{translate(language, "loading")}</h1>
+            </div>
+          </section>
+        </main>
+      )}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

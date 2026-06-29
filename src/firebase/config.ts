@@ -1,5 +1,5 @@
 import { getApps, initializeApp } from "firebase/app";
-import { getAuth, inMemoryPersistence, setPersistence } from "firebase/auth";
+import { browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -21,6 +21,6 @@ export const storage = getStorage(app);
 let authPersistencePromise: Promise<void> | null = null;
 
 export function useMemoryAuthPersistence() {
-  authPersistencePromise ??= setPersistence(auth, inMemoryPersistence);
+  authPersistencePromise ??= setPersistence(auth, browserLocalPersistence);
   return authPersistencePromise;
 }

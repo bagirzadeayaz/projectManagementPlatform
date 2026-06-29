@@ -1,10 +1,12 @@
 import {
   createUserWithEmailAndPassword,
+  onAuthStateChanged,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  type User,
 } from "firebase/auth";
 
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
@@ -140,12 +142,9 @@ async function findUserProfile(uid: string, email: string) {
   return null;
 }
 
-export async function loginWithEmail({ email, password }: AuthCredentials) {
-  await useMemoryAuthPersistence();
-
-  const credential = await signInWithEmailAndPassword(auth, email, password);
-  await credential.user.reload();
-  const profile = await findUserProfile(credential.user.uid, credential.user.email ?? email);
+async function getApprovedProfile(user: User, fallbackEmail: string) {
+  await user.reload();
+  const profile = await findUserProfile(user.uid, user.email ?? fallbackEmail);
 
   if (!profile) {
     await signOut(auth);
@@ -153,7 +152,7 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
   }
 
   if (profile.status === emailUnverifiedStatus || profile.status === "pending") {
-    if (!credential.user.emailVerified) {
+    if (!user.emailVerified) {
       await signOut(auth);
       throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
     }
@@ -176,6 +175,32 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
   }
 
   return profile;
+}
+
+export function observeAuthProfile(
+  onProfile: (profile: DbUser | null) => void,
+  onError: (error: Error) => void,
+) {
+  return onAuthStateChanged(auth, (firebaseUser) => {
+    if (!firebaseUser) {
+      onProfile(null);
+      return;
+    }
+
+    void getApprovedProfile(firebaseUser, firebaseUser.email ?? "")
+      .then(onProfile)
+      .catch((profileError) => {
+        onProfile(null);
+        onError(profileError instanceof Error ? profileError : new Error("Unable to restore signed-in session."));
+      });
+  });
+}
+
+export async function loginWithEmail({ email, password }: AuthCredentials) {
+  await useMemoryAuthPersistence();
+
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  return getApprovedProfile(credential.user, email);
 }
 
 export async function registerWithEmail({ email, password, name }: AuthCredentials, language: Language = "en") {

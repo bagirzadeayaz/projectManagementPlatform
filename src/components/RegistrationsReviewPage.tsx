@@ -9,6 +9,7 @@ import { useProjects } from "../hooks/useProjects";
 import type { Project } from "../services/project.service";
 import { deleteProjectUser, type ProjectUser } from "../services/user.service";
 import { getRoleLabel, getUserStatusLabel } from "../utils/labels";
+import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
 import { Badge } from "./ui/badge";
@@ -17,6 +18,7 @@ import { Card } from "./ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { FieldLabel } from "./ui/field";
 import { Select } from "./ui/select";
+import { Separator } from "./ui/separator";
 
 function canManageUsers(role: string) {
   return role.trim().toLowerCase() === "admin";
@@ -108,6 +110,7 @@ function ActiveUsersPanel({
         <p className="auth-kicker">{t("admin")}</p>
         <h2>{t("activeUsers")}</h2>
       </div>
+      <Separator />
 
       <FieldLabel>
         <span>{t("user")}</span>
@@ -150,17 +153,51 @@ function ActiveUsersPanel({
 
       {selectedUser ? (
         <div className="admin-user-details">
-          <div className="pending-user-preview admin-user-preview">
-            <AdminUserAvatar projectUser={selectedUser} />
-            <p>{t("username")}: {selectedUser.name || t("unnamedUser")}</p>
-            <span>{t("email")}: {selectedUser.email}</span>
-            <span>{t("role")}: {getRoleLabel(selectedUser.role, language)}</span>
-            <span>{t("status")}: {getUserStatusLabel(selectedUser.status, language)}</span>
-            <span>{t("userId")}: {selectedUser.uid}</span>
-          </div>
+          <section className="admin-user-profile-card" aria-label={getUserDisplayName(selectedUser)}>
+            <div className="admin-user-profile-header">
+              <AdminUserAvatar projectUser={selectedUser} />
+              <div>
+                <p className="auth-kicker">{t("user")}</p>
+                <h3>{selectedUser.name || t("unnamedUser")}</h3>
+                <p>{selectedUser.email}</p>
+              </div>
+              <div className="admin-user-profile-badges">
+                <Badge variant="secondary">{getRoleLabel(selectedUser.role, language)}</Badge>
+                <Badge variant={selectedUser.status === "active" ? "success" : "secondary"}>
+                  {getUserStatusLabel(selectedUser.status, language)}
+                </Badge>
+              </div>
+            </div>
 
-          <div>
-            <p className="auth-kicker">{t("projects")}</p>
+            <dl className="admin-user-data-grid">
+              <div>
+                <dt>{t("username")}</dt>
+                <dd>{selectedUser.name || t("unnamedUser")}</dd>
+              </div>
+              <div>
+                <dt>{t("email")}</dt>
+                <dd>{selectedUser.email}</dd>
+              </div>
+              <div>
+                <dt>{t("role")}</dt>
+                <dd>{getRoleLabel(selectedUser.role, language)}</dd>
+              </div>
+              <div>
+                <dt>{t("status")}</dt>
+                <dd>{getUserStatusLabel(selectedUser.status, language)}</dd>
+              </div>
+              <div className="admin-user-data-full">
+                <dt>{t("userId")}</dt>
+                <dd>{selectedUser.uid}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="admin-user-project-panel">
+            <div>
+              <p className="auth-kicker">{t("projects")}</p>
+              <h3>{t("projects")}</h3>
+            </div>
             {projectsLoading ? <p className="project-users-note">{t("loadingProjects")}</p> : null}
             {!projectsLoading && selectedUserProjects.length === 0 ? (
               <p className="project-users-note">{t("userHasNoProjects")}</p>
@@ -174,16 +211,18 @@ function ActiveUsersPanel({
                 ))}
               </div>
             ) : null}
-          </div>
+          </section>
 
-          <Button
-            disabled={selectedUser.uid === currentUserId || deletingUserId === selectedUser.uid || selectedUser.role === "admin"}
-            onClick={() => setConfirmingDelete(true)}
-            type="button"
-            variant="destructive"
-          >
-            {deletingUserId === selectedUser.uid ? t("deleting") : selectedUser.role === "admin" ? t("adminCannotBeDeleted") : t("deleteUser")}
-          </Button>
+          <div className="admin-user-detail-actions">
+            <Button
+              disabled={selectedUser.uid === currentUserId || deletingUserId === selectedUser.uid || selectedUser.role === "admin"}
+              onClick={() => setConfirmingDelete(true)}
+              type="button"
+              variant="destructive"
+            >
+              {deletingUserId === selectedUser.uid ? t("deleting") : selectedUser.role === "admin" ? t("adminCannotBeDeleted") : t("deleteUser")}
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -195,9 +234,6 @@ function ActiveUsersPanel({
       <Dialog open={Boolean(confirmingDelete && selectedUser)}>
         {selectedUser ? (
           <DialogContent aria-labelledby={`delete-user-${selectedUser.uid}`}>
-            <div className="confirm-icon" aria-hidden="true">
-              !
-            </div>
             <DialogHeader>
               <p className="auth-kicker">{t("deleteUser")}</p>
               <DialogTitle id={`delete-user-${selectedUser.uid}`}>{t("deleteUserQuestion", { name: selectedUser.name || selectedUser.email })}</DialogTitle>
@@ -250,18 +286,16 @@ export function RegistrationsReviewPage() {
 
   return (
     <main className="projects-page personalization-page">
-      <header className="projects-header">
-        <div>
-          <p className="auth-kicker">{t("admin")}</p>
-          <h1>{t("appUsers")}</h1>
-          <p className="projects-subtitle">{t("manageActiveUsers")}</p>
-        </div>
-        <div className="projects-userbar">
+      <PageHeader
+        actions={
           <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
             {t("projects")}
           </Link>
-        </div>
-      </header>
+        }
+        eyebrow={t("admin")}
+        subtitle={t("manageActiveUsers")}
+        title={t("appUsers")}
+      />
 
       <ActiveUsersPanel
         currentUserId={user.uid}

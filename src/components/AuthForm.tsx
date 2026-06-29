@@ -12,13 +12,10 @@ import { FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
+import { Tabs, TabsTrigger } from "./ui/tabs";
 
 type AuthMode = "login" | "register";
 
-const adminCredentials = {
-  email: "bagirzadeayaz2005@gmail.com",
-  password: "123456",
-};
 
 export function AuthForm() {
   const router = useRouter();
@@ -81,22 +78,7 @@ export function AuthForm() {
     }
   };
 
-  const handleAdminLogin = async () => {
-    setMode("login");
-    setEmail(adminCredentials.email);
-    setPassword(adminCredentials.password);
-    setConfirmPassword("");
-    setPasswordError(null);
-    setNotice(null);
-    clearError();
 
-    try {
-      await login(adminCredentials);
-      router.push("/projects#admin-panel");
-    } catch {
-      // The hook already formats and stores the visible error.
-    }
-  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -133,10 +115,6 @@ export function AuthForm() {
     <Card className="auth-card">
       <CardContent>
 
-        <Button className="autoAuthAdmin" disabled={busy} type="button" onClick={handleAdminLogin}>
-          {busy ? t("loading") : t("adminPanel")}
-        </Button>
-
         <div className="autoAuthAdmin" aria-hidden="true" />
 
         <div className="auth-header">
@@ -144,28 +122,22 @@ export function AuthForm() {
           <h1>{isRegistering ? t("createAccount") : t("loginTitle")}</h1>
         </div>
 
-        <div className="auth-tabs" role="tablist" aria-label={t("authMode")}>
-          <Button
+        <Tabs className="auth-tabs" aria-label={t("authMode")}>
+          <TabsTrigger
             aria-selected={!isRegistering}
             className="auth-tab"
             onClick={() => switchMode("login")}
-            role="tab"
-            type="button"
-            variant="ghost"
           >
             {t("login")}
-          </Button>
-          <Button
+          </TabsTrigger>
+          <TabsTrigger
             aria-selected={isRegistering}
             className="auth-tab"
             onClick={() => switchMode("register")}
-            role="tab"
-            type="button"
-            variant="ghost"
           >
             {t("register")}
-          </Button>
-        </div>
+          </TabsTrigger>
+        </Tabs>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           {isRegistering ? (

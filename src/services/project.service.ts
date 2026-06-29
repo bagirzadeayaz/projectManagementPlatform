@@ -89,19 +89,19 @@ export async function deleteProject(projectId: string) {
   await deleteDoc(doc(db, "projects", projectId));
 }
 
-export async function generateProjectDescription(title: string, message = "") {
+export async function generateProjectDescription(title: string, message = "", language = "en") {
   const response = await fetch("/api/generate-description", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ message, title }),
+    body: JSON.stringify({ language, message, title }),
   });
 
   const data = (await response.json()) as { description?: string; error?: string };
 
   if (!response.ok || !data.description) {
-    throw new Error(data.error || "Could not generate project description.");
+    throw new Error(data.error || "Could not generate the project description.");
   }
 
   return data.description;

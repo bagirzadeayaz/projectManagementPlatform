@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useAuth } from "./useAuth";
 import { getProjectUsers, type ProjectUser } from "../services/user.service";
 
 export function useProjectUsers(enabled = true) {
+  const { t } = useAuth();
   const [users, setUsers] = useState<ProjectUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,11 +19,11 @@ export function useProjectUsers(enabled = true) {
       const loadedUsers = await getProjectUsers();
       setUsers(loadedUsers);
     } catch (usersError) {
-      setError(usersError instanceof Error ? usersError.message : "Could not load users.");
+      setError(usersError instanceof Error ? usersError.message : t("usersLoadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (enabled) {

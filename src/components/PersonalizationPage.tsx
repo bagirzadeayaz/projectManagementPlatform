@@ -4,7 +4,15 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useAuth } from "../hooks/useAuth";
+import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
 import { AuthForm } from "./AuthForm";
+import { Alert } from "./ui/alert";
+import { Button, buttonVariants } from "./ui/button";
+import { Card } from "./ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 
 type CropSettings = {
   offsetX: number;
@@ -14,17 +22,17 @@ type CropSettings = {
 
 const croppedProfileSize = 512;
 
-function loadImage(source: string) {
+function loadImage(source: string, errorMessage: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not load image."));
+    image.onerror = () => reject(new Error(errorMessage));
     image.src = source;
   });
 }
 
-async function createCroppedProfileFile(file: File, previewUrl: string, crop: CropSettings) {
-  const image = await loadImage(previewUrl);
+async function createCroppedProfileFile(file: File, previewUrl: string, crop: CropSettings, errorMessage: string) {
+  const image = await loadImage(previewUrl, errorMessage);
   const canvas = document.createElement("canvas");
   canvas.width = croppedProfileSize;
   canvas.height = croppedProfileSize;
@@ -32,7 +40,7 @@ async function createCroppedProfileFile(file: File, previewUrl: string, crop: Cr
   const context = canvas.getContext("2d");
 
   if (!context) {
-    throw new Error("Could not crop image.");
+    throw new Error(errorMessage);
   }
 
   const baseScale = Math.max(croppedProfileSize / image.width, croppedProfileSize / image.height);
@@ -51,17 +59,17 @@ async function createCroppedProfileFile(file: File, previewUrl: string, crop: Cr
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
 
   if (!blob) {
-    throw new Error("Could not crop image.");
+    throw new Error(errorMessage);
   }
 
   return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}-profile.jpg`, { type: "image/jpeg" });
 }
 
 export function PersonalizationPage() {
-  const { user, busy, removeProfilePicture, updatePersonalization } = useAuth();
+  const { user, busy, language: activeLanguage, t, setLanguage: setActiveLanguage, removeProfilePicture, updatePersonalization } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
   const [theme, setTheme] = useState(user?.preferences.theme ?? "light");
-  const [language, setLanguage] = useState(user?.preferences.language ?? "en");
+  const [language, setLanguage] = useState<Language>(activeLanguage);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState(user?.photoURL ?? "");
   const [cropSourceFile, setCropSourceFile] = useState<File | null>(null);
@@ -73,8 +81,8 @@ export function PersonalizationPage() {
   useEffect(() => {
     setName(user?.name ?? "");
     setTheme(user?.preferences.theme ?? "light");
-    setLanguage(user?.preferences.language ?? "en");
-  }, [user?.name, user?.preferences.language, user?.preferences.theme]);
+    setLanguage((user?.preferences.language as Language | undefined) ?? activeLanguage);
+  }, [activeLanguage, user?.name, user?.preferences.language, user?.preferences.theme]);
 
   useEffect(() => {
     if (!photoFile) {
@@ -112,7 +120,7 @@ export function PersonalizationPage() {
     const file = event.target.files?.[0] ?? null;
 
     if (file && !file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
+      setError(t("chooseImageFile"));
       return;
     }
 
@@ -134,12 +142,12 @@ export function PersonalizationPage() {
     }
 
     try {
-      const croppedFile = await createCroppedProfileFile(cropSourceFile, cropSourceUrl, cropSettings);
+      const croppedFile = await createCroppedProfileFile(cropSourceFile, cropSourceUrl, cropSettings, t("cannotCropImage"));
       setPhotoFile(croppedFile);
       setCropSourceFile(null);
       setError(null);
     } catch (cropError) {
-      setError(cropError instanceof Error ? cropError.message : "Could not crop image.");
+      setError(cropError instanceof Error ? cropError.message : t("cannotCropImage"));
     }
   };
 
@@ -157,9 +165,9 @@ export function PersonalizationPage() {
     try {
       await removeProfilePicture();
       setPhotoPreview("");
-      setNotice("Profile picture deleted.");
+      setNotice(t("photoDeleted"));
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Could not delete profile picture.");
+      setError(deleteError instanceof Error ? deleteError.message : t("photoDeleteFailed"));
     }
   };
 
@@ -174,14 +182,14 @@ export function PersonalizationPage() {
         preferences: {
           theme,
           language,
-        
         },
         photoFile,
       });
+      setActiveLanguage(language);
       setPhotoFile(null);
-      setNotice("Personalization saved.");
+      setNotice(t("savedProfile"));
     } catch (personalizationError) {
-      setError(personalizationError instanceof Error ? personalizationError.message : "Could not save personalization.");
+      setError(personalizationError instanceof Error ? personalizationError.message : t("profileSaveFailed"));
     }
   };
 
@@ -189,73 +197,74 @@ export function PersonalizationPage() {
     <main className="projects-page personalization-page">
       <header className="projects-header">
         <div>
-          <p className="auth-kicker">Profile</p>
-          <h1>{user.name || "Profile"}</h1>
+          <p className="auth-kicker">{t("profile")}</p>
+          <h1>{user.name || t("profile")}</h1>
           <p className="projects-subtitle">{user.email}</p>
         </div>
         <div className="projects-userbar">
-          <Link className="nav-link" href="/projects">
-            Projects
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+            {t("projects")}
           </Link>
         </div>
       </header>
 
-      <form className="personalization-form" onSubmit={handleSubmit}>
-
+      <Card as="form" className="personalization-form" onSubmit={handleSubmit}>
         <section className="profile-picture-row">
           <label htmlFor="profile-photo" className="profile-picture-preview">
-            {photoPreview ? <img alt="Profile preview" src={photoPreview} /> : <span>{(name || user.email).slice(0, 1)}</span>}
+            {photoPreview ? <img alt={t("photoPreview")} src={photoPreview} /> : <span>{(name || user.email).slice(0, 1)}</span>}
           </label>
 
           <div className="profile-picture-actions">
             <input id="profile-photo" accept="image/*" type="file" onChange={handlePhotoChange} hidden />
-            <button className="auth-button danger-button" disabled={busy || (!photoPreview && !photoFile)} onClick={() => void handleDeletePhoto()} type="button">
-              Delete photo
-            </button>
+            <Button disabled={busy || (!photoPreview && !photoFile)} onClick={() => void handleDeletePhoto()} type="button" variant="destructive">
+              {t("deletePhoto")}
+            </Button>
           </div>
         </section>
 
-        <label className="auth-field">
-          <span>Username</span>
-          <input onChange={(event) => setName(event.target.value)} type="text" value={name} required/>
-        </label>
+        <FieldLabel>
+          <span>{t("username")}</span>
+          <Input onChange={(event) => setName(event.target.value)} type="text" value={name} required/>
+        </FieldLabel>
 
-        <label className="auth-field">
-          <span>Theme</span>
-          <select onChange={(event) => setTheme(event.target.value)} value={theme}>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </label>
+        <FieldLabel>
+          <span>{t("theme")}</span>
+          <Select onChange={(event) => setTheme(event.target.value)} value={theme}>
+            <option value="light">{t("light")}</option>
+            <option value="dark">{t("dark")}</option>
+          </Select>
+        </FieldLabel>
 
-        <label className="auth-field">
-          <span>Language</span>
-          <select onChange={(event) => setLanguage(event.target.value)} value={language}>
-            <option value="az">Azerbaijani</option>
-            <option value="en">English</option>
-          </select>
-        </label>
+        <FieldLabel>
+          <span>{t("language")}</span>
+          <Select onChange={(event) => setLanguage(event.target.value as Language)} value={language}>
+            {supportedLanguages.map((supportedLanguage) => (
+              <option key={supportedLanguage} value={supportedLanguage}>
+                {languageNames[supportedLanguage]}
+              </option>
+            ))}
+          </Select>
+        </FieldLabel>
 
-        {error ? <p className="auth-message auth-message-error">{error}</p> : null}
-        {notice ? <p className="auth-message auth-message-success">{notice}</p> : null}
+        {error ? <Alert variant="destructive">{error}</Alert> : null}
+        {notice ? <Alert variant="success">{notice}</Alert> : null}
 
-        <button className="auth-button" disabled={busy} type="submit">
-          {busy ? "Saving..." : "Save profile"}
-        </button>
-      </form>
+        <Button disabled={busy} type="submit">
+          {busy ? t("saving") : t("saveProfile")}
+        </Button>
+      </Card>
 
-      {cropSourceUrl ? (
-        <div className="confirm-backdrop" role="presentation">
-          <section aria-labelledby="profile-crop-title" aria-modal="true" className="confirm-dialog profile-crop-dialog" role="dialog">
-            <div>
-              <p className="auth-kicker">Profile photo</p>
-              <h2 id="profile-crop-title">Crop and focus</h2>
-              <p className="confirm-copy">Move the focus and zoom until the preview looks right.</p>
-            </div>
+      <Dialog open={Boolean(cropSourceUrl)}>
+        <DialogContent className="profile-crop-dialog" aria-labelledby="profile-crop-title">
+            <DialogHeader>
+              <p className="auth-kicker">{t("profilePhoto")}</p>
+              <DialogTitle id="profile-crop-title">{t("cropAndFocus")}</DialogTitle>
+              <DialogDescription>{t("cropHelp")}</DialogDescription>
+            </DialogHeader>
 
             <div className="profile-crop-frame">
               <img
-                alt="Crop preview"
+                alt={t("imageCropPreview")}
                 src={cropSourceUrl}
                 style={{
                   transform: `translate(${cropSettings.offsetX / 2}%, ${cropSettings.offsetY / 2}%) scale(${cropSettings.zoom})`,
@@ -264,9 +273,9 @@ export function PersonalizationPage() {
             </div>
 
             <div className="profile-crop-controls">
-              <label className="auth-field">
-                <span>Zoom</span>
-                <input
+              <FieldLabel>
+                <span>{t("zoom")}</span>
+                <Input
                   max="2.5"
                   min="1"
                   onChange={(event) => setCropSettings((current) => ({ ...current, zoom: Number(event.target.value) }))}
@@ -274,20 +283,19 @@ export function PersonalizationPage() {
                   type="range"
                   value={cropSettings.zoom}
                 />
-              </label>
+              </FieldLabel>
             </div>
 
-            <div className="project-actions">
-              <button className="auth-button auth-button-secondary" onClick={cancelCrop} type="button">
-                Cancel
-              </button>
-              <button className="auth-button" onClick={() => void applyCrop()} type="button">
-                Use photo
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+            <DialogFooter>
+              <Button onClick={cancelCrop} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button onClick={() => void applyCrop()} type="button">
+                {t("usePhoto")}
+              </Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

@@ -8,12 +8,47 @@ import { useProjectUsers } from "../hooks/useProjectUsers";
 import { useProjects } from "../hooks/useProjects";
 import type { Project } from "../services/project.service";
 import { deleteProjectUser, type ProjectUser } from "../services/user.service";
+import { getRoleLabel, getUserStatusLabel } from "../utils/labels";
 import { AuthForm } from "./AuthForm";
+import { Alert } from "./ui/alert";
+import { Badge } from "./ui/badge";
+import { Button, buttonVariants } from "./ui/button";
+import { Card } from "./ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { FieldLabel } from "./ui/field";
+import { Select } from "./ui/select";
 
 function canManageUsers(role: string) {
-  const normalizedRole = role.trim().toLowerCase();
+  return role.trim().toLowerCase() === "admin";
+}
 
-  return normalizedRole === "admin";
+function getUserDisplayName(projectUser: ProjectUser) {
+  return projectUser.name || projectUser.email;
+}
+
+function getUserInitials(value: string) {
+  const [first = "", second = ""] = value
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase());
+
+  return `${first}${second}` || "?";
+}
+
+function AdminUserAvatar({ projectUser }: { projectUser: ProjectUser }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const displayName = getUserDisplayName(projectUser);
+  const showPhoto = Boolean(projectUser.photoURL && !imageFailed);
+
+  return (
+    <span className="project-member-avatar admin-user-avatar" aria-hidden="true">
+      {showPhoto ? (
+        <img alt="" src={projectUser.photoURL} onError={() => setImageFailed(true)} />
+      ) : (
+        <span>{getUserInitials(displayName)}</span>
+      )}
+    </span>
+  );
 }
 
 function ActiveUsersPanel({
@@ -35,6 +70,7 @@ function ActiveUsersPanel({
   projectsError: string | null;
   onDeleteUser: (uid: string) => Promise<void>;
 }) {
+  const { language, t } = useAuth();
   const [selectedUserId, setSelectedUserId] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -58,55 +94,81 @@ function ActiveUsersPanel({
       await onDeleteUser(selectedUser.uid);
       setSelectedUserId("");
       setConfirmingDelete(false);
-      setNotice("User deleted from app data and removed from projects.");
+      setNotice(t("userDeleted"));
     } catch (userError) {
-      setDeleteError(userError instanceof Error ? userError.message : "Could not delete user.");
+      setDeleteError(userError instanceof Error ? userError.message : t("userDeleteFailed"));
     } finally {
       setDeletingUserId(null);
     }
   };
 
   return (
-    <section className="admin-panel">
+    <Card className="admin-panel">
       <div>
-        <p className="auth-kicker">Admin</p>
-        <h2>Active users</h2>
+        <p className="auth-kicker">{t("admin")}</p>
+        <h2>{t("activeUsers")}</h2>
       </div>
 
-      <label className="auth-field">
-        <span>User</span>
-        <select onChange={(event) => setSelectedUserId(event.target.value)} value={selectedUserId}>
-          <option value="">{loading ? "Loading..." : "Select active user"}</option>
+      <FieldLabel>
+        <span>{t("user")}</span>
+        <Select onChange={(event) => setSelectedUserId(event.target.value)} value={selectedUserId}>
+          <option value="">{loading ? t("loading") : t("noUserSelected")}</option>
           {users.map((activeUser) => (
             <option key={activeUser.uid} value={activeUser.uid}>
               {activeUser.name || activeUser.email} - {activeUser.email}
             </option>
           ))}
-        </select>
-      </label>
+        </Select>
+      </FieldLabel>
 
-      {!loading && users.length === 0 ? <p className="project-users-note">No active users found.</p> : null}
+      {!loading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+
+      {!loading && users.length > 0 ? (
+        <div className="admin-users-roster">
+          {users.map((activeUser) => {
+            const isSelected = activeUser.uid === selectedUserId;
+
+            return (
+              <button
+                aria-pressed={isSelected}
+                className="admin-user-row"
+                key={activeUser.uid}
+                onClick={() => setSelectedUserId(activeUser.uid)}
+                type="button"
+              >
+                <AdminUserAvatar projectUser={activeUser} />
+                <span>
+                  <strong>{getUserDisplayName(activeUser)}</strong>
+                  <small>{activeUser.email}</small>
+                </span>
+                <Badge variant="secondary">{getRoleLabel(activeUser.role, language)}</Badge>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {selectedUser ? (
         <div className="admin-user-details">
-          <div className="pending-user-preview">
-            <p>Username: {selectedUser.name || "Unnamed user"}</p>
-            <span>Email: {selectedUser.email}</span>
-            <span>Role: {selectedUser.role}</span>
-            <span>Status: {selectedUser.status}</span>
-            <span>UID: {selectedUser.uid}</span>
+          <div className="pending-user-preview admin-user-preview">
+            <AdminUserAvatar projectUser={selectedUser} />
+            <p>{t("username")}: {selectedUser.name || t("unnamedUser")}</p>
+            <span>{t("email")}: {selectedUser.email}</span>
+            <span>{t("role")}: {getRoleLabel(selectedUser.role, language)}</span>
+            <span>{t("status")}: {getUserStatusLabel(selectedUser.status, language)}</span>
+            <span>{t("userId")}: {selectedUser.uid}</span>
           </div>
 
           <div>
-            <p className="auth-kicker">Projects</p>
-            {projectsLoading ? <p className="project-users-note">Loading projects...</p> : null}
+            <p className="auth-kicker">{t("projects")}</p>
+            {projectsLoading ? <p className="project-users-note">{t("loadingProjects")}</p> : null}
             {!projectsLoading && selectedUserProjects.length === 0 ? (
-              <p className="project-users-note">This user is not assigned to any projects.</p>
+              <p className="project-users-note">{t("userHasNoProjects")}</p>
             ) : null}
             {selectedUserProjects.length > 0 ? (
               <div className="admin-user-projects">
                 {selectedUserProjects.map((project) => (
-                  <Link className="nav-link" href={`/projects/${project.id}`} key={project.id}>
+                  <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href={`/projects/${project.id}`} key={project.id}>
                     {project.name}
                   </Link>
                 ))}
@@ -114,52 +176,50 @@ function ActiveUsersPanel({
             ) : null}
           </div>
 
-          <button
-            className="auth-button danger-button"
-            disabled={selectedUser.uid === currentUserId || deletingUserId === selectedUser.uid}
+          <Button
+            disabled={selectedUser.uid === currentUserId || deletingUserId === selectedUser.uid || selectedUser.role === "admin"}
             onClick={() => setConfirmingDelete(true)}
             type="button"
+            variant="destructive"
           >
-            {deletingUserId === selectedUser.uid ? "Deleting..." : selectedUser.role === "admin" ? "Cannot delete admin" : "Delete user"}
-          </button>
+            {deletingUserId === selectedUser.uid ? t("deleting") : selectedUser.role === "admin" ? t("adminCannotBeDeleted") : t("deleteUser")}
+          </Button>
         </div>
       ) : null}
 
-      {error ? <p className="auth-message auth-message-error">{error}</p> : null}
-      {projectsError ? <p className="auth-message auth-message-error">{projectsError}</p> : null}
-      {deleteError ? <p className="auth-message auth-message-error">{deleteError}</p> : null}
-      {notice ? <p className="auth-message auth-message-success">{notice}</p> : null}
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
+      {projectsError ? <Alert variant="destructive">{projectsError}</Alert> : null}
+      {deleteError ? <Alert variant="destructive">{deleteError}</Alert> : null}
+      {notice ? <Alert variant="success">{notice}</Alert> : null}
 
-      {confirmingDelete && selectedUser ? (
-        <div className="confirm-backdrop" role="presentation">
-          <section aria-labelledby={`delete-user-${selectedUser.uid}`} aria-modal="true" className="confirm-dialog" role="dialog">
+      <Dialog open={Boolean(confirmingDelete && selectedUser)}>
+        {selectedUser ? (
+          <DialogContent aria-labelledby={`delete-user-${selectedUser.uid}`}>
             <div className="confirm-icon" aria-hidden="true">
               !
             </div>
-            <div>
-              <p className="auth-kicker">Delete user</p>
-              <h2 id={`delete-user-${selectedUser.uid}`}>Delete {selectedUser.name || selectedUser.email}?</h2>
-              <p className="confirm-copy">
-                This removes their Firestore user profile and removes them from project member lists.
-              </p>
-            </div>
-            <div className="project-actions">
-              <button className="auth-button auth-button-secondary" onClick={() => setConfirmingDelete(false)} type="button">
-                Cancel
-              </button>
-              <button className="auth-button danger-button" disabled={deletingUserId === selectedUser.uid} onClick={deleteSelectedUser} type="button">
-                {deletingUserId === selectedUser.uid ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-    </section>
+            <DialogHeader>
+              <p className="auth-kicker">{t("deleteUser")}</p>
+              <DialogTitle id={`delete-user-${selectedUser.uid}`}>{t("deleteUserQuestion", { name: selectedUser.name || selectedUser.email })}</DialogTitle>
+              <DialogDescription>{t("deleteUserCopy")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setConfirmingDelete(false)} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button disabled={deletingUserId === selectedUser.uid} onClick={deleteSelectedUser} type="button" variant="destructive">
+                {deletingUserId === selectedUser.uid ? t("deleting") : t("delete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </Card>
   );
 }
 
 export function RegistrationsReviewPage() {
-  const { user } = useAuth();
+  const { user, t } = useAuth();
   const canManage = user ? canManageUsers(user.role) : false;
   const { users, loading: usersLoading, error: usersError, refresh: refreshUsers } = useProjectUsers(canManage);
   const {
@@ -180,9 +240,9 @@ export function RegistrationsReviewPage() {
   if (!canManage) {
     return (
       <main className="projects-page personalization-page">
-        <section className="empty-state">You do not have permission to manage users.</section>
-        <Link className="nav-link" href="/projects">
-          Back to projects
+        <section className="empty-state">{t("notAllowedManageUsers")}</section>
+        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+          {t("backToProjects")}
         </Link>
       </main>
     );
@@ -192,13 +252,13 @@ export function RegistrationsReviewPage() {
     <main className="projects-page personalization-page">
       <header className="projects-header">
         <div>
-          <p className="auth-kicker">Admin</p>
-          <h1>Users</h1>
-          <p className="projects-subtitle">Manage active app users.</p>
+          <p className="auth-kicker">{t("admin")}</p>
+          <h1>{t("appUsers")}</h1>
+          <p className="projects-subtitle">{t("manageActiveUsers")}</p>
         </div>
         <div className="projects-userbar">
-          <Link className="nav-link" href="/projects">
-            Projects
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+            {t("projects")}
           </Link>
         </div>
       </header>

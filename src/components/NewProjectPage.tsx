@@ -13,7 +13,16 @@ import {
   isPastDeadline,
   PROJECT_STATUSES,
 } from "../services/project.service";
+import { getProjectStatusLabel } from "../utils/labels";
 import { AuthForm } from "./AuthForm";
+import { Alert } from "./ui/alert";
+import { Button, buttonVariants } from "./ui/button";
+import { Card } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
+import { Textarea } from "./ui/textarea";
 
 function canManageProjects(role: string) {
   return role.trim().toLowerCase() === "admin";
@@ -21,7 +30,7 @@ function canManageProjects(role: string) {
 
 export function NewProjectPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, language, t } = useAuth();
   const { users, loading: usersLoading, error: usersError } = useProjectUsers(Boolean(user));
   const { savingId, error, createProject } = useProjects();
   const [name, setName] = useState("");
@@ -54,9 +63,9 @@ export function NewProjectPage() {
   if (!canManageProjects(user.role)) {
     return (
       <main className="projects-page personalization-page">
-        <section className="empty-state">You do not have permission to add projects.</section>
-        <Link className="nav-link" href="/projects">
-          Back to projects
+        <section className="empty-state">{t("notAllowedManageProjects")}</section>
+        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+          {t("backToProjects")}
         </Link>
       </main>
     );
@@ -68,18 +77,18 @@ export function NewProjectPage() {
     setUsersSelectionError(null);
 
     if (isPastDeadline(deadline)) {
-      setDeadlineError("Deadline cannot be in the past.");
+      setDeadlineError(t("deadlineCannotBePast"));
       return;
     }
 
     if (userIds.length === 0) {
-      setUsersSelectionError("Select at least one user for this project.");
+      setUsersSelectionError(t("selectProjectUser"));
       return;
     }
 
     await createProject(
       {
-        name: name.trim() || "Untitled project",
+        name: name.trim() || t("projectNameFallback"),
         description: description.trim(),
         status,
         deadline,
@@ -104,12 +113,10 @@ export function NewProjectPage() {
     setGenerationError(null);
 
     try {
-      const generatedDescription = await generateProjectDescription(name, descriptionMessage);
+      const generatedDescription = await generateProjectDescription(name, descriptionMessage, language);
       setDescription(generatedDescription);
     } catch (descriptionError) {
-      setGenerationError(
-        descriptionError instanceof Error ? descriptionError.message : "Could not generate project description.",
-      );
+      setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
     } finally {
       setGenerating(false);
     }
@@ -119,37 +126,37 @@ export function NewProjectPage() {
     <main className="projects-page personalization-page">
       <header className="projects-header">
         <div>
-          <p className="auth-kicker">Admin</p>
-          <h1>Add project</h1>
-          <p className="projects-subtitle">Create a project in Firestore.</p>
+          <p className="auth-kicker">{t("admin")}</p>
+          <h1>{t("addProject")}</h1>
+          <p className="projects-subtitle">{language === "az" ? "Firestore-da layihə yaradın." : "Create a project in Firestore."}</p>
         </div>
         <div className="projects-userbar">
-          <Link className="nav-link" href="/projects">
-            Projects
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+            {t("projects")}
           </Link>
         </div>
       </header>
 
-      <form className="personalization-form" onSubmit={handleSubmit}>
-        <label className="auth-field">
-          <span>Name</span>
-          <input onChange={(event) => setName(event.target.value)} required type="text" value={name}/>
-        </label>
+      <Card className="personalization-form new-project-form" as="form" onSubmit={handleSubmit}>
+        <FieldLabel>
+          <span>{t("name")}</span>
+          <Input onChange={(event) => setName(event.target.value)} required type="text" value={name}/>
+        </FieldLabel>
 
-        <label className="auth-field">
-          <span>Status</span>
-          <select className={`status-select status-select-${status}`} onChange={(event) => setStatus(event.target.value)} value={status}>
+        <FieldLabel>
+          <span>{t("status")}</span>
+          <Select className={`status-select status-select-${status}`} onChange={(event) => setStatus(event.target.value)} value={status}>
             {PROJECT_STATUSES.map((projectStatus) => (
               <option key={projectStatus} value={projectStatus}>
-                {projectStatus}
+                {getProjectStatusLabel(projectStatus, language)}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </FieldLabel>
 
-        <label className="auth-field">
-          <span>Deadline</span>
-          <input
+        <FieldLabel>
+          <span>{t("deadline")}</span>
+          <Input
             min={minimumDeadline}
             onChange={(event) => {
               setDeadline(event.target.value);
@@ -159,31 +166,30 @@ export function NewProjectPage() {
             type="date"
             value={deadline}
           />
-        </label>
+        </FieldLabel>
 
         <fieldset className="project-users-field">
-          <legend>Users working on this project</legend>
+          <legend>{t("usersWorkingOnProject")}</legend>
           <label className="project-users-search">
-            <span>Search users</span>
-            <input
+            <span>{t("searchUsers")}</span>
+            <Input
               onChange={(event) => setUserSearch(event.target.value)}
-              placeholder="Search by name or email"
+              placeholder={t("searchUsersPlaceholder")}
               type="search"
               value={userSearch}
             />
           </label>
-          {usersLoading ? <p className="project-users-note">Loading users...</p> : null}
-          {!usersLoading && users.length === 0 ? <p className="project-users-note">No users found.</p> : null}
+          {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
+          {!usersLoading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
           {!usersLoading && users.length > 0 && filteredUsers.length === 0 ? (
-            <p className="project-users-note">No users match your search.</p>
+            <p className="project-users-note">{t("noMatchingUsers")}</p>
           ) : null}
           <div className="project-users-list">
             {filteredUsers.map((projectUser) => (
               <label className="project-user-option" key={projectUser.uid}>
-                <input
+                <Checkbox
                   checked={userIds.includes(projectUser.uid)}
                   onChange={() => toggleProjectUser(projectUser.uid)}
-                  type="checkbox"
                 />
                 <span>{projectUser.name || projectUser.email}</span>
                 <small>{projectUser.email}</small>
@@ -192,41 +198,39 @@ export function NewProjectPage() {
           </div>
         </fieldset>
 
-        <label className="auth-field">
-          <span>Message for AI description</span>
-          <textarea
+        <FieldLabel>
+          <span>{t("descriptionAiMessage")}</span>
+          <Textarea
             maxLength={1000}
             onChange={(event) => setDescriptionMessage(event.target.value)}
-            placeholder="Add goals, audience, features, or important details for the generated description"
+            placeholder={t("descriptionAiPlaceholder")}
             rows={4}
             value={descriptionMessage}
           />
           <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
-        </label>
+        </FieldLabel>
 
-        <label className="auth-field">
+        <FieldLabel>
           <span className="field-label-row">
-            Description
-            <button className="inline-ai-button" disabled={generating || !name.trim()} onClick={handleGenerateDescription} type="button">
-              {generating ? "Generating..." : "Generate with AI"}
-            </button>
+            {t("description")}
+            <Button className="inline-ai-button" disabled={generating || !name.trim()} onClick={handleGenerateDescription} size="sm" type="button" variant="secondary">
+              {generating ? t("generating") : t("generateWithAi")}
+            </Button>
           </span>
-          <textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={5} value={description} required/>
-          <div className="char-count">
-              {`${description?.length || 0}/500`}
-          </div>
-        </label>
+          <Textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={5} value={description} required/>
+          <div className="char-count">{`${description?.length || 0}/500`}</div>
+        </FieldLabel>
 
-        {generationError ? <p className="auth-message auth-message-error">{generationError}</p> : null}
-        {deadlineError ? <p className="auth-message auth-message-error">{deadlineError}</p> : null}
-        {usersSelectionError ? <p className="auth-message auth-message-error">{usersSelectionError}</p> : null}
-        {usersError ? <p className="auth-message auth-message-error">{usersError}</p> : null}
-        {error ? <p className="auth-message auth-message-error">{error}</p> : null}
+        {generationError ? <Alert variant="destructive">{generationError}</Alert> : null}
+        {deadlineError ? <Alert variant="destructive">{deadlineError}</Alert> : null}
+        {usersSelectionError ? <Alert variant="destructive">{usersSelectionError}</Alert> : null}
+        {usersError ? <Alert variant="destructive">{usersError}</Alert> : null}
+        {error ? <Alert variant="destructive">{error}</Alert> : null}
 
-        <button className="auth-button" disabled={savingId === "new"} type="submit">
-          {savingId === "new" ? "Creating..." : "Create project"}
-        </button>
-      </form>
+        <Button disabled={savingId === "new"} type="submit">
+          {savingId === "new" ? t("creating") : t("createProject")}
+        </Button>
+      </Card>
     </main>
   );
 }

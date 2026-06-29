@@ -4,7 +4,7 @@ import { AuthProvider } from "../hooks/useAuth";
 import "./globals.css";
 
 export const metadata = {
-  title: "Project Auth",
+  title: "Project Platform",
   description: "Client authentication",
 };
 

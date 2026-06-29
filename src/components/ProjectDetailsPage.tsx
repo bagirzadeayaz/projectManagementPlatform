@@ -17,7 +17,18 @@ import {
   type Project,
 } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
+import { getProjectStatusLabel } from "../utils/labels";
 import { AuthForm } from "./AuthForm";
+import { Alert } from "./ui/alert";
+import { Badge } from "./ui/badge";
+import { Button, buttonVariants } from "./ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
+import { Textarea } from "./ui/textarea";
 
 function canManageProjects(role: string) {
   return role.trim().toLowerCase() === "admin";
@@ -27,10 +38,39 @@ function getStatusClass(status: string) {
   return `project-status project-status-${status.toLowerCase()}`;
 }
 
+function getUserDisplayName(projectUser: ProjectUser) {
+  return projectUser.name || projectUser.email;
+}
+
+function getUserInitials(value: string) {
+  const [first = "", second = ""] = value
+    .split(/\s+|@/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase());
+
+  return `${first}${second}` || "?";
+}
+
+function ProjectUserAvatar({ projectUser }: { projectUser: ProjectUser }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const displayName = getUserDisplayName(projectUser);
+  const showPhoto = Boolean(projectUser.photoURL && !imageFailed);
+
+  return (
+    <span className="project-member-avatar" aria-hidden="true">
+      {showPhoto ? (
+        <img alt="" src={projectUser.photoURL} onError={() => setImageFailed(true)} />
+      ) : (
+        <span>{getUserInitials(displayName)}</span>
+      )}
+    </span>
+  );
+}
+
 export function ProjectDetailsPage() {
   const params = useParams<{ projectId?: string | string[] }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, language, t } = useAuth();
   const { users, loading: usersLoading, error: usersError } = useProjectUsers(Boolean(user));
   const projectId = Array.isArray(params.projectId) ? params.projectId[0] : params.projectId;
   const [project, setProject] = useState<Project | null>(null);
@@ -87,7 +127,7 @@ export function ProjectDetailsPage() {
 
         if (!loadedProject) {
           setProject(null);
-          setError("Project not found.");
+          setError(t("projectMissing"));
           return;
         }
 
@@ -100,7 +140,7 @@ export function ProjectDetailsPage() {
         setUserIds(loadedProject.userIds);
       } catch (projectError) {
         if (active) {
-          setError(projectError instanceof Error ? projectError.message : "Could not load project.");
+          setError(projectError instanceof Error ? projectError.message : t("projectLoadFailed"));
         }
       } finally {
         if (active) {
@@ -114,7 +154,7 @@ export function ProjectDetailsPage() {
     return () => {
       active = false;
     };
-  }, [projectId, user]);
+  }, [projectId, t, user]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -128,17 +168,17 @@ export function ProjectDetailsPage() {
     setError(null);
 
     if (isPastDeadline(deadline)) {
-      setDeadlineError("Deadline cannot be in the past.");
+      setDeadlineError(t("deadlineCannotBePast"));
       return;
     }
 
     if (canEditUsers && userIds.length === 0) {
-      setUsersSelectionError("Select at least one user for this project.");
+      setUsersSelectionError(t("selectProjectUser"));
       return;
     }
 
     const update = {
-      name: name.trim() || "Untitled project",
+      name: name.trim() || t("projectNameFallback"),
       description: description.trim(),
       status: status.trim() || "active",
       deadline,
@@ -152,7 +192,7 @@ export function ProjectDetailsPage() {
       setProject({ ...project, ...update });
       setEditing(false);
     } catch (projectError) {
-      setError(projectError instanceof Error ? projectError.message : "Could not save project.");
+      setError(projectError instanceof Error ? projectError.message : t("projectSaveFailed"));
     } finally {
       setSaving(false);
     }
@@ -163,12 +203,10 @@ export function ProjectDetailsPage() {
     setGenerationError(null);
 
     try {
-      const generatedDescription = await generateProjectDescription(name, descriptionMessage);
+      const generatedDescription = await generateProjectDescription(name, descriptionMessage, language);
       setDescription(generatedDescription);
     } catch (descriptionError) {
-      setGenerationError(
-        descriptionError instanceof Error ? descriptionError.message : "Could not generate project description.",
-      );
+      setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
     } finally {
       setGeneratingDescription(false);
     }
@@ -186,7 +224,7 @@ export function ProjectDetailsPage() {
       await deleteProject(project.id);
       router.push("/projects");
     } catch (projectError) {
-      setError(projectError instanceof Error ? projectError.message : "Could not delete project.");
+      setError(projectError instanceof Error ? projectError.message : t("projectDeleteFailed"));
       setDeleting(false);
       setConfirmingDelete(false);
     }
@@ -233,84 +271,118 @@ export function ProjectDetailsPage() {
     <main className="projects-page project-details-page">
       <header className="projects-header">
         <div>
-          <p className="auth-kicker">Project details</p>
-          <h1>{project?.name || "Project"}</h1>
-          {project ? <p className={getStatusClass(project.status)}>{project.status}</p> : null}
+          <p className="auth-kicker">{t("projectDetails")}</p>
+          <h1>{project?.name || t("project")}</h1>
+          {project ? <Badge className={getStatusClass(project.status)}>{getProjectStatusLabel(project.status, language)}</Badge> : null}
         </div>
         <div className="projects-userbar">
-          <Link className="nav-link" href="/projects">
-            Projects
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+            {t("projects")}
           </Link>
           {canEdit && project ? (
-            <button className="auth-button" onClick={() => setEditing(true)} type="button">
-              Edit
-            </button>
+            <Button onClick={() => setEditing(true)} size="sm" type="button">
+              {t("edit")}
+            </Button>
           ) : null}
         </div>
       </header>
 
-      {loading ? <section className="empty-state">Loading project...</section> : null}
-      {error ? <p className="auth-message auth-message-error">{error}</p> : null}
+      {loading ? <section className="empty-state">{t("loadingProject")}</section> : null}
+      {error ? <Alert variant="destructive">{error}</Alert> : null}
 
       {!loading && project && !editing ? (
-        <section className="project-detail-panel">
-          <div className="project-detail-grid">
-            <div>
-              <p className="auth-kicker">Description</p>
-              <p className="project-detail-description">{project.description || "No description provided."}</p>
-            </div>
-            <div className="project-detail-meta">
-              <div>
-                <span>Deadline</span>
-                <strong>{project.deadline || "No deadline"}</strong>
+        <Card className="project-detail-panel project-record">
+          <div className="project-record-grid">
+            <section className="project-record-main">
+              <CardHeader>
+                <p className="auth-kicker">{t("overview")}</p>
+                <CardTitle>{t("description")}</CardTitle>
+                <CardDescription>{project.name}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="project-detail-description">{project.description || t("descriptionMissing")}</p>
+              </CardContent>
+            </section>
+
+            <aside className="project-record-aside" aria-label={t("projectMeta")}>
+              <p className="auth-kicker">{t("projectMeta")}</p>
+              <div className="project-detail-meta">
+                <div>
+                  <span>{t("status")}</span>
+                  <strong>{getProjectStatusLabel(project.status, language)}</strong>
+                </div>
+                <div>
+                  <span>{t("deadline")}</span>
+                  <strong>{project.deadline || t("noDeadline")}</strong>
+                </div>
+                <div>
+                  <span>{t("appUsers")}</span>
+                  <strong>{selectedProjectUsers.length || project.userIds.length}</strong>
+                </div>
               </div>
-              <div>
-                <span>Users</span>
-                <strong>{selectedProjectUsers.length || project.userIds.length}</strong>
-              </div>
-            </div>
+            </aside>
           </div>
 
-          <div>
-            <p className="auth-kicker">Users working on this project</p>
+          <section className="project-team-panel">
+            <div className="project-section-heading">
+              <div>
+                <p className="auth-kicker">{t("assignedTeam")}</p>
+                <h2>{t("usersWorkingOnProject")}</h2>
+              </div>
+              <Badge variant="secondary">{selectedProjectUsers.length || project.userIds.length}</Badge>
+            </div>
             {selectedProjectUsers.length > 0 ? (
-              <div className="project-users-chips">
-                {selectedProjectUsers.map((projectUser) => (
-                  <span className="project-user-chip" key={projectUser.uid}>
-                    {projectUser.name || projectUser.email}
-                  </span>
-                ))}
+              <div className="project-member-list">
+                {selectedProjectUsers.map((projectUser) => {
+                  const displayName = getUserDisplayName(projectUser);
+
+                  return (
+                    <div className="project-member-row" key={projectUser.uid}>
+                      <ProjectUserAvatar projectUser={projectUser} />
+                      <div>
+                        <strong>{displayName}</strong>
+                        <small>{projectUser.email}</small>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <p className="project-users-note">No users assigned.</p>
+              <p className="project-users-note">{t("noUserAssigned")}</p>
             )}
-          </div>
+          </section>
 
           {canEdit ? (
-            <div className="project-detail-actions">
-              <button className="auth-button auth-button-secondary" onClick={() => setEditing(true)} type="button">
-                Edit project
-              </button>
+            <CardFooter className="project-detail-actions">
+              <Button onClick={() => setEditing(true)} type="button" variant="secondary">
+                {t("editProject")}
+              </Button>
               {canDelete ? (
-                <button className="auth-button danger-button" onClick={() => setConfirmingDelete(true)} type="button">
-                  Delete project
-                </button>
+                <Button onClick={() => setConfirmingDelete(true)} type="button" variant="destructive">
+                  {t("deleteProject")}
+                </Button>
               ) : null}
-            </div>
+            </CardFooter>
           ) : null}
-        </section>
+        </Card>
       ) : null}
 
       {!loading && project && editing ? (
-        <form className="personalization-form project-detail-edit-form" onSubmit={handleSubmit}>
-          <label className="auth-field">
-            <span>Name</span>
-            <input onChange={(event) => setName(event.target.value)} required type="text" value={name} />
-          </label>
+        <Card as="form" className="personalization-form project-detail-edit-form" onSubmit={handleSubmit}>
+          <CardHeader className="project-edit-header">
+            <p className="auth-kicker">{t("editingProject")}</p>
+            <CardTitle>{project.name}</CardTitle>
+            <CardDescription>{t("projectDetails")}</CardDescription>
+          </CardHeader>
 
-          <label className="auth-field">
-            <span>Status</span>
-            <select
+          <FieldLabel>
+            <span>{t("name")}</span>
+            <Input onChange={(event) => setName(event.target.value)} required type="text" value={name} />
+          </FieldLabel>
+
+          <FieldLabel>
+            <span>{t("status")}</span>
+            <Select
               className={`status-select status-select-${status}`}
               onChange={(event) => setStatus(event.target.value)}
               required
@@ -318,15 +390,15 @@ export function ProjectDetailsPage() {
             >
               {PROJECT_STATUSES.map((projectStatus) => (
                 <option key={projectStatus} value={projectStatus}>
-                  {projectStatus}
+                  {getProjectStatusLabel(projectStatus, language)}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </FieldLabel>
 
-          <label className="auth-field">
-            <span>Deadline</span>
-            <input
+          <FieldLabel>
+            <span>{t("deadline")}</span>
+            <Input
               min={minimumDeadline}
               onChange={(event) => {
                 setDeadline(event.target.value);
@@ -336,32 +408,31 @@ export function ProjectDetailsPage() {
               type="date"
               value={deadline}
             />
-          </label>
+          </FieldLabel>
 
           <fieldset className="project-users-field">
-            <legend>Users working on this project</legend>
+            <legend>{t("usersWorkingOnProject")}</legend>
             <label className="project-users-search">
-              <span>Search users</span>
-              <input
+              <span>{t("searchUsers")}</span>
+              <Input
                 onChange={(event) => setUserSearch(event.target.value)}
-                placeholder="Search by name or email"
+                placeholder={t("searchUsersPlaceholder")}
                 type="search"
                 value={userSearch}
               />
             </label>
-            {usersLoading ? <p className="project-users-note">Loading users...</p> : null}
-            {!usersLoading && users.length === 0 ? <p className="project-users-note">No users found.</p> : null}
+            {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
+            {!usersLoading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
             {!usersLoading && users.length > 0 && filteredUsers.length === 0 ? (
-              <p className="project-users-note">No users match your search.</p>
+              <p className="project-users-note">{t("noMatchingUsers")}</p>
             ) : null}
             <div className="project-users-list">
               {filteredUsers.map((projectUser) => (
                 <label className="project-user-option" key={projectUser.uid}>
-                  <input
+                  <Checkbox
                     checked={userIds.includes(projectUser.uid)}
                     disabled={!canEditUsers}
                     onChange={() => toggleProjectUser(projectUser.uid)}
-                    type="checkbox"
                   />
                   <span>{projectUser.name || projectUser.email}</span>
                   <small>{projectUser.email}</small>
@@ -370,78 +441,76 @@ export function ProjectDetailsPage() {
             </div>
           </fieldset>
 
-          <label className="auth-field">
-            <span>Message for AI description</span>
-            <textarea
+          <FieldLabel>
+            <span>{t("descriptionAiMessage")}</span>
+            <Textarea
               maxLength={1000}
               onChange={(event) => setDescriptionMessage(event.target.value)}
-              placeholder="Add goals, audience, features, or important details for the generated description"
+              placeholder={t("descriptionAiPlaceholder")}
               rows={4}
               value={descriptionMessage}
             />
             <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
-          </label>
+          </FieldLabel>
 
-          <label className="auth-field">
+          <FieldLabel>
             <span className="field-label-row">
-              Description
-              <button
+              {t("description")}
+              <Button
                 className="inline-ai-button"
                 disabled={generatingDescription || !name.trim()}
                 onClick={handleGenerateDescription}
+                size="sm"
                 type="button"
+                variant="secondary"
               >
-                {generatingDescription ? "Generating..." : "Generate with AI"}
-              </button>
+                {generatingDescription ? t("generating") : t("generateWithAi")}
+              </Button>
             </span>
-            <textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} required rows={6} value={description} />
-            <div className="char-count">
-              {`${description?.length || 0}/500`}
-            </div>
-          </label>
+            <Textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} required rows={6} value={description} />
+            <div className="char-count">{`${description?.length || 0}/500`}</div>
+          </FieldLabel>
 
-          {generationError ? <p className="auth-message auth-message-error">{generationError}</p> : null}
-          {deadlineError ? <p className="auth-message auth-message-error">{deadlineError}</p> : null}
-          {usersSelectionError ? <p className="auth-message auth-message-error">{usersSelectionError}</p> : null}
-          {usersError ? <p className="auth-message auth-message-error">{usersError}</p> : null}
+          {generationError ? <Alert variant="destructive">{generationError}</Alert> : null}
+          {deadlineError ? <Alert variant="destructive">{deadlineError}</Alert> : null}
+          {usersSelectionError ? <Alert variant="destructive">{usersSelectionError}</Alert> : null}
+          {usersError ? <Alert variant="destructive">{usersError}</Alert> : null}
 
           <div className="project-actions">
-            <button className="auth-button auth-button-secondary" onClick={cancelEditing} type="button">
-              Cancel
-            </button>
-            <button className="auth-button" disabled={saving} type="submit">
-              {saving ? "Saving..." : "Save"}
-            </button>
+            <Button onClick={cancelEditing} type="button" variant="secondary">
+              {t("cancel")}
+            </Button>
+            <Button disabled={saving} type="submit">
+              {saving ? t("saving") : t("save")}
+            </Button>
           </div>
-        </form>
+        </Card>
       ) : null}
 
-      {!loading && !project && !error ? <section className="empty-state">Project not found.</section> : null}
+      {!loading && !project && !error ? <section className="empty-state">{t("projectMissing")}</section> : null}
 
-      {confirmingDelete && project && canDelete ? (
-        <div className="confirm-backdrop" role="presentation">
-          <section aria-labelledby={`delete-${project.id}`} aria-modal="true" className="confirm-dialog" role="dialog">
+      <Dialog open={Boolean(confirmingDelete && project && canDelete)}>
+        {project ? (
+          <DialogContent aria-labelledby={`delete-${project.id}`}>
             <div className="confirm-icon" aria-hidden="true">
               !
             </div>
-            <div>
-              <p className="auth-kicker">Delete project</p>
-              <h2 id={`delete-${project.id}`}>Delete {project.name}?</h2>
-              <p className="confirm-copy">
-                This will remove the project from Database. This action cannot be undone from this screen.
-              </p>
-            </div>
-            <div className="project-actions">
-              <button className="auth-button auth-button-secondary" onClick={() => setConfirmingDelete(false)} type="button">
-                Cancel
-              </button>
-              <button className="auth-button danger-button" disabled={deleting} onClick={handleDelete} type="button">
-                {deleting ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+            <DialogHeader>
+              <p className="auth-kicker">{t("deleteProject")}</p>
+              <DialogTitle id={`delete-${project.id}`}>{t("deleteProjectQuestion", { name: project.name })}</DialogTitle>
+              <DialogDescription>{t("deleteProjectCopy")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button onClick={() => setConfirmingDelete(false)} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button disabled={deleting} onClick={handleDelete} type="button" variant="destructive">
+                {deleting ? t("deleting") : t("delete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
     </main>
   );
 }

@@ -7,16 +7,21 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useProjects } from "../hooks/useProjects";
 import { PROJECT_STATUSES, type Project } from "../services/project.service";
+import { getProjectStatusLabel, getRoleLabel } from "../utils/labels";
 import { AuthForm } from "./AuthForm";
 import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
+import { Badge } from "./ui/badge";
+import { Button, buttonVariants } from "./ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./ui/card";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 
 type ProjectSort = "deadline-asc" | "deadline-desc" | "name-asc" | "name-desc" | "status-asc";
 type ProjectsDashboardView = "all" | "mine";
 
 function canEditProjects(role: string) {
-  const normalizedRole = role.trim().toLowerCase();
-
-  return normalizedRole === "admin";
+  return role.trim().toLowerCase() === "admin";
 }
 
 function getStatusClass(status: string) {
@@ -25,6 +30,10 @@ function getStatusClass(status: string) {
 
 function getDeadlineSortValue(project: Project) {
   return project.deadline || "9999-12-31";
+}
+
+function countProjects(projects: Project[], status: string) {
+  return projects.filter((project) => project.status === status).length;
 }
 
 function sortProjects(projects: Project[], sort: ProjectSort) {
@@ -50,26 +59,32 @@ function sortProjects(projects: Project[], sort: ProjectSort) {
 }
 
 function ProjectCard({ project }: { project: Project }) {
+  const { language, t } = useAuth();
+
   return (
-    <Link className="project-card project-card-link" href={`/projects/${project.id}`}>
-      <div className="project-card-header">
+    <Card className="project-card project-card-link">
+      <Link className="project-card-anchor" href={`/projects/${project.id}`}>
+      <CardHeader className="project-card-header">
         <div>
-          <p className={getStatusClass(project.status)}>{project.status}</p>
-          <h2>{project.name}</h2>
+          <Badge className={getStatusClass(project.status)}>{getProjectStatusLabel(project.status, language)}</Badge>
+          <CardTitle>{project.name}</CardTitle>
         </div>
-      </div>
-      <p className="project-description">{project.description || "No description provided."}</p>
-      <div className="project-card-footer">
-        {project.deadline ? <p className="project-meta">Deadline: {project.deadline}</p> : <p className="project-meta">No deadline</p>}
-        <span className="project-open-text">Open details</span>
-      </div>
-    </Link>
+      </CardHeader>
+      <CardContent>
+        <p className="project-description">{project.description || t("descriptionMissing")}</p>
+      </CardContent>
+      <CardFooter className="project-card-footer">
+        {project.deadline ? <p className="project-meta">{t("deadline")}: {project.deadline}</p> : <p className="project-meta">{t("noDeadline")}</p>}
+        <span className="project-open-text">{t("openDetails")}</span>
+      </CardFooter>
+      </Link>
+    </Card>
   );
 }
 
 export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardView }) {
   const router = useRouter();
-  const { user, busy, signOut } = useAuth();
+  const { user, busy, language, t, signOut } = useAuth();
   const { projects, loading, error, refresh } = useProjects();
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -101,6 +116,12 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     }),
     projectSort,
   );
+  const dashboardStats = [
+    { label: t("totalProjects"), value: visibleProjects.length, tone: "default" },
+    { label: t("activeProjects"), value: countProjects(visibleProjects, "active"), tone: "success" },
+    { label: t("plannedProjects"), value: countProjects(visibleProjects, "planned"), tone: "secondary" },
+    { label: t("completedProjects"), value: countProjects(visibleProjects, "completed"), tone: "info" },
+  ] as const;
 
   const handleSignOut = async () => {
     await signOut();
@@ -112,104 +133,110 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     <main className="projects-page">
       <header className="projects-header">
         <div>
-          <p className="auth-kicker">{isMyProjectsView ? "My projects" : "Projects"}</p>
-          <h1>{isMyProjectsView ? "My projects" : "Projects"}</h1>
+          <p className="auth-kicker">{isMyProjectsView ? t("myProjects") : t("projects")}</p>
+          <h1>{isMyProjectsView ? t("myProjects") : t("projects")}</h1>
           <p className="projects-subtitle">
-            {isMyProjectsView ? "Projects you are assigned to." : "All projects from Firestore."}
+            {isMyProjectsView ? t("myProjectsSubtitle") : t("projectsFirestoreSubtitle")}
           </p>
         </div>
 
         <div className="projects-userbar">
           <span>{user.name || user.email}</span>
-          <span className="role-pill">{user.role}</span>
+          <Badge>{getRoleLabel(user.role, language)}</Badge>
           {isMyProjectsView ? (
-            <Link className="nav-link" href="/projects">
-              All projects
+            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+              {t("allProjects")}
             </Link>
           ) : (
-            <Link className="nav-link" href="/myprojects">
-              My projects
+            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/myprojects">
+              {t("myProjects")}
             </Link>
           )}
           {canEdit ? (
-            <Link className="nav-link nav-link-primary" href="/projects/new">
-              Add project
+            <Link className={buttonVariants({ size: "sm" })} href="/projects/new">
+              {t("addProject")}
             </Link>
           ) : null}
           {canEdit ? (
-            <Link className="nav-link" href="/registrations">
-              Users
+            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/registrations">
+              {t("appUsers")}
             </Link>
           ) : null}
-          <Link className="nav-link" href="/personalization">
-            Profile
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/personalization">
+            {t("profile")}
           </Link>
-          <button
-            className="auth-button auth-button-secondary"
-            disabled={busy}
-            onClick={() => setConfirmingSignOut(true)}
-            type="button"
-          >
-            Sign out
-          </button>
+          <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} size="sm" type="button" variant="secondary">
+            {t("logout")}
+          </Button>
         </div>
       </header>
 
       {error ? <p className="auth-message auth-message-error">{error}</p> : null}
 
-      <section className="project-toolbar">
-        <p>
-          {canEdit ? "Admin editing enabled" : "Read only access"} - {filteredProjects.length} of {visibleProjects.length} projects
-        </p>
-        <button className="auth-button auth-button-secondary" disabled={loading} onClick={refresh} type="button">
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+      <section className="dashboard-summary" aria-label={t("projects")}>
+        {dashboardStats.map((stat) => (
+          <Card className={`dashboard-stat dashboard-stat-${stat.tone}`} key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </Card>
+        ))}
       </section>
 
-      <section className="project-filters" aria-label="Project search, filters, and sorting">
-        <label className="auth-field">
-          <span>Search</span>
-          <input
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search projects"
-            type="search"
-            value={searchQuery}
-          />
-        </label>
+      <Card className="dashboard-control-panel">
+        <section className="project-toolbar">
+          <p>
+            {canEdit ? t("adminEditActive") : t("readOnlyAccess")} - {t("projectsShown", { shown: filteredProjects.length, total: visibleProjects.length })}
+          </p>
+          <Button disabled={loading} onClick={refresh} size="sm" type="button" variant="secondary">
+            {loading ? t("refreshing") : t("refresh")}
+          </Button>
+        </section>
 
-        <label className="auth-field">
-          <span>Status</span>
-          <select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
-            <option value="all">All statuses</option>
-            {PROJECT_STATUSES.map((projectStatus) => (
-              <option key={projectStatus} value={projectStatus}>
-                {projectStatus}
-              </option>
-            ))}
-          </select>
-        </label>
+        <section className="project-filters" aria-label={`${t("search")}, ${t("status")}, ${t("sort")}`}>
+          <FieldLabel>
+            <span>{t("search")}</span>
+            <Input
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("searchProjects")}
+              type="search"
+              value={searchQuery}
+            />
+          </FieldLabel>
 
-        <label className="auth-field">
-          <span>Sort by</span>
-          <select onChange={(event) => setProjectSort(event.target.value as ProjectSort)} value={projectSort}>
-            <option value="deadline-asc">Deadline soonest</option>
-            <option value="deadline-desc">Deadline latest</option>
-            <option value="name-asc">Name A-Z</option>
-            <option value="name-desc">Name Z-A</option>
-            <option value="status-asc">Status A-Z</option>
-          </select>
-        </label>
-      </section>
+          <FieldLabel>
+            <span>{t("status")}</span>
+            <Select onChange={(event) => setStatusFilter(event.target.value)} value={statusFilter}>
+              <option value="all">{t("allStatuses")}</option>
+              {PROJECT_STATUSES.map((projectStatus) => (
+                <option key={projectStatus} value={projectStatus}>
+                  {getProjectStatusLabel(projectStatus, language)}
+                </option>
+              ))}
+            </Select>
+          </FieldLabel>
 
-      {loading ? <section className="empty-state">Loading projects...</section> : null}
+          <FieldLabel>
+            <span>{t("sort")}</span>
+            <Select onChange={(event) => setProjectSort(event.target.value as ProjectSort)} value={projectSort}>
+              <option value="deadline-asc">{t("nearestDeadline")}</option>
+              <option value="deadline-desc">{t("farthestDeadline")}</option>
+              <option value="name-asc">{t("nameAsc")}</option>
+              <option value="name-desc">{t("nameDesc")}</option>
+              <option value="status-asc">{t("statusAsc")}</option>
+            </Select>
+          </FieldLabel>
+        </section>
+      </Card>
+
+      {loading ? <section className="empty-state">{t("loadingProjects")}</section> : null}
 
       {!loading && visibleProjects.length === 0 ? (
         <section className="empty-state">
-          {isMyProjectsView ? "You are not assigned to any projects yet." : "No projects found."}
+          {isMyProjectsView ? t("noProjectsAssigned") : t("noProjects")}
         </section>
       ) : null}
       {!loading && visibleProjects.length > 0 && filteredProjects.length === 0 ? (
-        <section className="empty-state">No projects match your search or filters.</section>
+        <section className="empty-state">{t("noMatchingProjects")}</section>
       ) : null}
 
       <section className="projects-grid">
@@ -223,6 +250,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
           busy={busy}
           onCancel={() => setConfirmingSignOut(false)}
           onConfirm={() => void handleSignOut()}
+          open={confirmingSignOut}
         />
       ) : null}
     </main>

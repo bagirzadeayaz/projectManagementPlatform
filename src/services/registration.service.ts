@@ -93,7 +93,7 @@ export async function reviewPendingUser(input: {
   const pendingSnapshot = await getDoc(pendingRef);
 
   if (!pendingSnapshot.exists()) {
-    throw new Error("Pending user not found.");
+    throw new Error("Pending user was not found.");
   }
 
   const pendingUser = toPendingUser(pendingSnapshot.id, pendingSnapshot.data());

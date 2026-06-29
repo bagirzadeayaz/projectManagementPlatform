@@ -4,6 +4,13 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
+import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader } from "./ui/card";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
 import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
 
 type AuthMode = "login" | "register";
@@ -15,7 +22,7 @@ const adminCredentials = {
 
 export function AuthForm() {
   const router = useRouter();
-  const { user, busy, error, clearError, login, register, sendResetEmail, signOut } = useAuth();
+  const { user, busy, error, language, setLanguage, t, clearError, login, register, sendResetEmail, signOut } = useAuth();
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -26,7 +33,6 @@ export function AuthForm() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   const isRegistering = mode === "register";
-
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
@@ -42,7 +48,7 @@ export function AuthForm() {
     setPasswordError(null);
 
     if (isRegistering && password !== confirmPassword) {
-      setPasswordError("Passwords do not match.");
+      setPasswordError(t("passwordMismatch"));
       return;
     }
 
@@ -51,10 +57,8 @@ export function AuthForm() {
     try {
       if (isRegistering) {
         await register(credentials);
-        setNotice("Account created.");
       } else {
         await login(credentials);
-        setNotice("Signed in.");
       }
 
       router.push("/projects");
@@ -65,13 +69,13 @@ export function AuthForm() {
 
   const handlePasswordReset = async () => {
     if (!email.trim()) {
-      setNotice("Enter your email first.");
+      setNotice(t("enterEmailFirst"));
       return;
     }
 
     try {
       await sendResetEmail(email.trim());
-      setNotice("Password reset email sent.");
+      setNotice(t("passwordResetSent"));
     } catch {
       // The hook already formats and stores the visible error.
     }
@@ -88,7 +92,6 @@ export function AuthForm() {
 
     try {
       await login(adminCredentials);
-      setNotice("Signed in.");
       router.push("/projects#admin-panel");
     } catch {
       // The hook already formats and stores the visible error.
@@ -102,136 +105,128 @@ export function AuthForm() {
 
   if (user) {
     return (
-      <section className="auth-card auth-card-signed-in">
-        <div>
-          <p className="auth-kicker">Signed in</p>
-          <h1>{user.name || "Welcome back"}</h1>
+      <Card className="auth-card auth-card-signed-in">
+        <CardHeader>
+          <p className="auth-kicker">{t("signedIn")}</p>
+          <h1>{user.name || t("welcome")}</h1>
           <p className="auth-muted">{user.email}</p>
-        </div>
-        <button className="auth-button auth-button-secondary" disabled={busy} onClick={() => setConfirmingSignOut(true)} type="button">
-          {busy ? "Signing out..." : "Sign out"}
-        </button>
-        <button className="auth-button" onClick={() => router.push("/projects")} type="button">
-          Open projects
-        </button>
-        {confirmingSignOut ? (
-          <SignOutConfirmDialog
-            busy={busy}
-            onCancel={() => setConfirmingSignOut(false)}
-            onConfirm={() => void handleSignOut()}
-          />
-        ) : null}
-      </section>
+        </CardHeader>
+        <CardContent>
+          <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} type="button" variant="secondary">
+            {busy ? t("logoutBusy") : t("logout")}
+          </Button>
+          <Button onClick={() => router.push("/projects")} type="button">
+            {t("openProjects")}
+          </Button>
+        </CardContent>
+        <SignOutConfirmDialog
+          busy={busy}
+          onCancel={() => setConfirmingSignOut(false)}
+          onConfirm={() => void handleSignOut()}
+          open={confirmingSignOut}
+        />
+      </Card>
     );
   }
 
   return (
-    <section className="auth-card">
-      <button className="auth-button autoAuthAdmin" disabled={busy} type="button" onClick={handleAdminLogin}>
-        {busy ? "Signing in..." : "Admin Panel"}
-      </button>
+    <Card className="auth-card">
+      <CardContent>
 
+        <Button className="autoAuthAdmin" disabled={busy} type="button" onClick={handleAdminLogin}>
+          {busy ? t("loading") : t("adminPanel")}
+        </Button>
 
-      <div className="autoAuthAdmin" aria-hidden="true" />
+        <div className="autoAuthAdmin" aria-hidden="true" />
 
+        <div className="auth-header">
+          <p className="auth-kicker">{t("workspace")}</p>
+          <h1>{isRegistering ? t("createAccount") : t("loginTitle")}</h1>
+        </div>
 
-      <div className="auth-header">
-        <p className="auth-kicker">Project workspace</p>
-        <h1>{isRegistering ? "Create account" : "Sign in"}</h1>
-      </div>
+        <div className="auth-tabs" role="tablist" aria-label={t("authMode")}>
+          <Button
+            aria-selected={!isRegistering}
+            className="auth-tab"
+            onClick={() => switchMode("login")}
+            role="tab"
+            type="button"
+            variant="ghost"
+          >
+            {t("login")}
+          </Button>
+          <Button
+            aria-selected={isRegistering}
+            className="auth-tab"
+            onClick={() => switchMode("register")}
+            role="tab"
+            type="button"
+            variant="ghost"
+          >
+            {t("register")}
+          </Button>
+        </div>
 
-      <div className="auth-tabs" role="tablist" aria-label="Authentication mode">
-        <button
-          aria-selected={!isRegistering}
-          className="auth-tab"
-          onClick={() => switchMode("login")}
-          role="tab"
-          type="button"
-        >
-          Sign in
-        </button>
-        <button
-          aria-selected={isRegistering}
-          className="auth-tab"
-          onClick={() => switchMode("register")}
-          role="tab"
-          type="button"
-        >
-          Register
-        </button>
-      </div>
+        <form className="auth-form" onSubmit={handleSubmit}>
+          {isRegistering ? (
+            <FieldLabel>
+              <span>{t("name")}</span>
+              <Input autoComplete="name" onChange={(event) => setName(event.target.value)} type="text" value={name} required />
+            </FieldLabel>
+          ) : null}
 
-      <form className="auth-form" onSubmit={handleSubmit}>
-        {isRegistering ? (
-          <label className="auth-field">
-            <span>Name</span>
-            <input
-              autoComplete="name"
-              onChange={(event) => setName(event.target.value)}
-              type="text"
-              value={name}
-              required
-            />
-          </label>
-        ) : null}
+          <FieldLabel>
+            <span>{t("email")}</span>
+            <Input autoComplete="email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+          </FieldLabel>
 
-        <label className="auth-field">
-          <span>Email</span>
-          <input
-            autoComplete="email"
-            onChange={(event) => setEmail(event.target.value)}
-            required
-            type="email"
-            value={email}
-          />
-        </label>
-
-        <label className="auth-field">
-          <span>Password</span>
-          <input
-            autoComplete={isRegistering ? "new-password" : "current-password"}
-            minLength={6}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setPasswordError(null);
-            }}
-            required
-            type="password"
-            value={password}
-          />
-        </label>
-
-        {isRegistering ? (
-          <label className="auth-field">
-            <span>Confirm password</span>
-            <input
-              autoComplete="new-password"
+          <FieldLabel>
+            <span>{t("password")}</span>
+            <Input
+              autoComplete={isRegistering ? "new-password" : "current-password"}
               minLength={6}
               onChange={(event) => {
-                setConfirmPassword(event.target.value);
+                setPassword(event.target.value);
                 setPasswordError(null);
               }}
               required
               type="password"
-              value={confirmPassword}
+              value={password}
             />
-          </label>
+          </FieldLabel>
+
+          {isRegistering ? (
+            <FieldLabel>
+              <span>{t("confirmPassword")}</span>
+              <Input
+                autoComplete="new-password"
+                minLength={6}
+                onChange={(event) => {
+                  setConfirmPassword(event.target.value);
+                  setPasswordError(null);
+                }}
+                required
+                type="password"
+                value={confirmPassword}
+              />
+            </FieldLabel>
+          ) : null}
+
+          {error ? <Alert variant="destructive">{error}</Alert> : null}
+          {passwordError ? <Alert variant="destructive">{passwordError}</Alert> : null}
+          {notice ? <Alert variant="success">{notice}</Alert> : null}
+
+          <Button disabled={busy} type="submit">
+            {busy ? t("loading") : isRegistering ? t("createAccount") : t("login")}
+          </Button>
+        </form>
+
+        {!isRegistering ? (
+          <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
+            {t("forgotPassword")}
+          </Button>
         ) : null}
-
-        {error ? <p className="auth-message auth-message-error">{error}</p> : null}
-        {passwordError ? <p className="auth-message auth-message-error">{passwordError}</p> : null}
-        {notice ? <p className="auth-message auth-message-success">{notice}</p> : null}
-
-        <button className="auth-button" disabled={busy} type="submit">
-          {busy ? "Please wait..." : isRegistering ? "Create account" : "Sign in"}
-        </button>
-      </form>
-
-      {!isRegistering ? (
-        <button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button">
-          Reset password
-        </button>
-      ) : null}
-    </section>
+      </CardContent>
+    </Card>
   );
 }

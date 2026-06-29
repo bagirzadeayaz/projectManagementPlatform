@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useAuth } from "./useAuth";
 import { getPendingUsers, reviewPendingUser, type PendingUser } from "../services/registration.service";
 
 export function usePendingUsers(enabled = true) {
+  const { language } = useAuth();
   const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -18,11 +20,17 @@ export function usePendingUsers(enabled = true) {
       const loadedUsers = await getPendingUsers();
       setPendingUsers(loadedUsers);
     } catch (pendingError) {
-      setError(pendingError instanceof Error ? pendingError.message : "Could not load pending users.");
+      setError(
+        pendingError instanceof Error
+          ? pendingError.message
+          : language === "az"
+            ? "Gözləyən istifadəçiləri yükləmək mümkün olmadı."
+            : "Could not load pending users.",
+      );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     if (enabled) {
@@ -38,7 +46,13 @@ export function usePendingUsers(enabled = true) {
       await reviewPendingUser({ pendingUserId, status, reviewedBy });
       setPendingUsers((currentUsers) => currentUsers.filter((pendingUser) => pendingUser.id !== pendingUserId));
     } catch (pendingError) {
-      setError(pendingError instanceof Error ? pendingError.message : "Could not review pending user.");
+      setError(
+        pendingError instanceof Error
+          ? pendingError.message
+          : language === "az"
+            ? "Gözləyən istifadəçini yoxlamaq mümkün olmadı."
+            : "Could not review the pending user.",
+      );
       throw pendingError;
     } finally {
       setReviewing(false);

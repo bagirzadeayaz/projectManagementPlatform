@@ -11,6 +11,7 @@ import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updat
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { auth, db, storage, useMemoryAuthPersistence } from "./config";
+import { normalizeLanguage, type Language } from "../utils/i18n";
 
 export type AuthCredentials = {
   email: string;
@@ -41,10 +42,6 @@ function readString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
-function readStringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
-
 function readPreferences(value: unknown): UserPreferences {
   if (!value || typeof value !== "object") {
     return {
@@ -57,7 +54,7 @@ function readPreferences(value: unknown): UserPreferences {
 
   return {
     theme: readString(preferences.theme, "light"),
-    language: readString(preferences.language, "en"),
+    language: normalizeLanguage(preferences.language),
   };
 }
 
@@ -152,28 +149,10 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
 
   if (!profile) {
     await signOut(auth);
-    throw new Error("User profile not found in database.");
+    throw new Error("User profile was not found in the database.");
   }
 
-  if (profile.status === emailUnverifiedStatus) {
-    if (!credential.user.emailVerified) {
-      await signOut(auth);
-      throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
-    }
-
-    await updateDoc(doc(db, "users", profile.docId), {
-      status: "approved",
-      emailVerified: true,
-      updatedAt: serverTimestamp(),
-    });
-
-    return {
-      ...profile,
-      status: "approved",
-    };
-  }
-
-  if (profile.status === "pending") {
+  if (profile.status === emailUnverifiedStatus || profile.status === "pending") {
     if (!credential.user.emailVerified) {
       await signOut(auth);
       throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
@@ -193,18 +172,19 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
 
   if (profile.status === "denied") {
     await signOut(auth);
-    throw new Error("Account request was denied.");
+    throw new Error("The account request was denied.");
   }
 
   return profile;
 }
 
-export async function registerWithEmail({ email, password, name }: AuthCredentials) {
+export async function registerWithEmail({ email, password, name }: AuthCredentials, language: Language = "en") {
   await useMemoryAuthPersistence();
 
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const user = credential.user;
   const displayName = name?.trim() ?? "";
+  const normalizedLanguage = normalizeLanguage(language);
 
   if (displayName) {
     await updateProfile(user, { displayName });
@@ -220,7 +200,7 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
     status: emailUnverifiedStatus,
     preferences: {
       theme: "light",
-      language: "en",
+      language: normalizedLanguage,
     },
   };
 
@@ -233,7 +213,11 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
   await sendEmailVerification(user);
 
   await signOut(auth);
-  throw new Error("Verification email sent. Verify your email address, then sign in again to complete registration.");
+  throw new Error(
+    normalizedLanguage === "az"
+      ? "Təsdiq e-poçtu göndərildi. E-poçt ünvanınızı təsdiqləyin, sonra qeydiyyatı tamamlamaq üçün yenidən daxil olun."
+      : "Verification email sent. Verify your email address, then sign in again to complete registration.",
+  );
 }
 
 export async function resetPassword(email: string) {
@@ -252,6 +236,7 @@ export async function updateUserPersonalization(
   const preferences = {
     ...user.preferences,
     ...update.preferences,
+    language: normalizeLanguage(update.preferences?.language ?? user.preferences.language),
   };
   const photoURL = update.photoURL ?? user.photoURL;
 

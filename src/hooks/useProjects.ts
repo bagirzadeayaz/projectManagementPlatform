@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { useAuth } from "./useAuth";
 import {
   addProject,
   deleteProject,
@@ -13,6 +14,7 @@ import {
 } from "../services/project.service";
 
 export function useProjects(enabled = true) {
+  const { t } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -27,11 +29,11 @@ export function useProjects(enabled = true) {
       const loadedProjects = await getProjects();
       setProjects(loadedProjects);
     } catch (projectsError) {
-      setError(projectsError instanceof Error ? projectsError.message : "Could not load projects.");
+      setError(projectsError instanceof Error ? projectsError.message : t("projectsLoadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (enabled) {
@@ -49,7 +51,7 @@ export function useProjects(enabled = true) {
         currentProjects.map((project) => (project.id === projectId ? { ...project, ...update } : project)),
       );
     } catch (projectsError) {
-      setError(projectsError instanceof Error ? projectsError.message : "Could not save project.");
+      setError(projectsError instanceof Error ? projectsError.message : t("projectSaveFailed"));
       throw projectsError;
     } finally {
       setSavingId(null);
@@ -65,7 +67,7 @@ export function useProjects(enabled = true) {
       setProjects((currentProjects) => [createdProject, ...currentProjects]);
       return createdProject;
     } catch (projectsError) {
-      setError(projectsError instanceof Error ? projectsError.message : "Could not create project.");
+      setError(projectsError instanceof Error ? projectsError.message : t("projectCreateFailed"));
       throw projectsError;
     } finally {
       setSavingId(null);
@@ -80,7 +82,7 @@ export function useProjects(enabled = true) {
       await deleteProject(projectId);
       setProjects((currentProjects) => currentProjects.filter((project) => project.id !== projectId));
     } catch (projectsError) {
-      setError(projectsError instanceof Error ? projectsError.message : "Could not delete project.");
+      setError(projectsError instanceof Error ? projectsError.message : t("projectDeleteFailed"));
       throw projectsError;
     } finally {
       setDeletingId(null);

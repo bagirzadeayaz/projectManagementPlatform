@@ -6,6 +6,7 @@ export type ProjectUser = {
   uid: string;
   email: string;
   name: string;
+  photoURL: string;
   status: string;
   role: string;
 };
@@ -19,6 +20,7 @@ function toProjectUser(docId: string, data: Record<string, unknown>): ProjectUse
     uid: readString(data.uid, docId),
     email: readString(data.email),
     name: readString(data.name),
+    photoURL: readString(data.photoURL),
     status: readString(data.status, "approved"),
     role: readString(data.role, "user"),
   };

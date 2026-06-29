@@ -15,6 +15,10 @@ const authMode = process.env.AZURE_AUTH_MODE?.trim().toLowerCase();
 const azureTenantId = process.env.AZURE_TENANT_ID?.trim();
 const azureClientId = process.env.AZURE_CLIENT_ID?.trim();
 const azureClientSecret = process.env.AZURE_CLIENT_SECRET?.trim();
+const azureOpenAIEndpoint = process.env.AZURE_OPENAI_ENDPOINT?.trim();
+const azureOpenAIKey = process.env.AZURE_OPENAI_KEY?.trim();
+const azureOpenAIDeployment = process.env.AZURE_OPENAI_DEPLOYMENT?.trim();
+const azureOpenAIApiVersion = process.env.AZURE_OPENAI_API_VERSION?.trim();
 const descriptionMaxCharacters = 500;
 const descriptionTargetMinCharacters = 300;
 const descriptionTargetMaxCharacters = 400;
@@ -52,10 +56,12 @@ function getPositiveInteger(value: string | undefined, fallback: number) {
 
 function toClientError(error: unknown) {
   if (!(error instanceof Error)) {
-    return "Could not generate project description with Azure AI agent.";
+    return "Could not generate project description with the AI service.";
   }
 
   if (
+    error.message.includes("Azure OpenAI credentials are missing") ||
+    error.message.includes("Azure OpenAI request failed") ||
     error.message.includes("Azure service principal credentials are missing") ||
     error.message.includes("ClientSecretCredential authentication failed") ||
     error.message.includes("ChainedTokenCredential authentication failed") ||
@@ -82,6 +88,14 @@ function shouldUseBrowserAuth() {
 
 function hasServicePrincipalConfig() {
   return Boolean(azureTenantId && azureClientId && azureClientSecret);
+}
+
+function hasAzureOpenAIConfig() {
+  return Boolean(azureOpenAIEndpoint && azureOpenAIKey && azureOpenAIDeployment && azureOpenAIApiVersion);
+}
+
+function hasAnyAzureOpenAIConfig() {
+  return Boolean(azureOpenAIEndpoint || azureOpenAIKey || azureOpenAIDeployment || azureOpenAIApiVersion);
 }
 
 function shouldUseServicePrincipalAuth() {
@@ -131,12 +145,12 @@ function getAzureCredential() {
   return cachedAzureCredential;
 }
 
-async function generateWithAzureAgent(title: string, descriptionMessage: string) {
+async function generateWithAi(title: string, descriptionMessage: string) {
   let previousDescriptionLength: number | null = null;
   let previousDescription: string | null = null;
 
   for (let attempt = 1; attempt <= descriptionMaxAttempts; attempt += 1) {
-    const description = await requestDescriptionFromAzureAgent(
+    const description = await requestDescriptionFromAi(
       title,
       descriptionMessage,
       buildSystemInstructions(previousDescriptionLength),
@@ -293,6 +307,173 @@ function clampDescription(description: string) {
   fallbackDescription = fallbackDescription.replace(/[,\-;:!?.\s]+$/g, "");
 
   return `${fallbackDescription}.`.slice(0, descriptionMaxCharacters).trim();
+}
+
+async function requestDescriptionFromAi(title: string, descriptionMessage: string, instructions: string) {
+  if (hasAzureOpenAIConfig()) {
+    return generateWithAzureOpenAI(title, descriptionMessage, instructions);
+  }
+
+  if (hasAnyAzureOpenAIConfig()) {
+    throw new Error("Azure OpenAI credentials are missing.");
+  }
+
+  return requestDescriptionFromAzureAgent(title, descriptionMessage, instructions);
+}
+
+function getAzureOpenAIChatCompletionsUrl() {
+  if (!azureOpenAIEndpoint || !azureOpenAIDeployment || !azureOpenAIApiVersion) {
+    throw new Error("Azure OpenAI credentials are missing.");
+  }
+
+  const baseUrl = azureOpenAIEndpoint.replace(/\/+$/, "");
+  const deployment = encodeURIComponent(azureOpenAIDeployment);
+  const version = encodeURIComponent(azureOpenAIApiVersion);
+
+  return `${baseUrl}/openai/deployments/${deployment}/chat/completions?api-version=${version}`;
+}
+
+function getAzureFoundryResponsesUrl() {
+  if (!azureOpenAIEndpoint) {
+    throw new Error("Azure OpenAI credentials are missing.");
+  }
+
+  return `${azureOpenAIEndpoint.replace(/\/+$/, "")}/openai/v1/responses`;
+}
+
+function isAzureFoundryProjectEndpoint() {
+  if (!azureOpenAIEndpoint) {
+    return false;
+  }
+
+  try {
+    const url = new URL(azureOpenAIEndpoint);
+
+    return url.hostname.endsWith(".services.ai.azure.com") || url.pathname.includes("/api/projects/");
+  } catch {
+    return false;
+  }
+}
+
+function getDescriptionFromAzureOpenAIResponse(data: Record<string, unknown>) {
+  const choices = data.choices;
+
+  if (!Array.isArray(choices)) {
+    return null;
+  }
+
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") {
+      continue;
+    }
+
+    const message = (choice as { message?: unknown }).message;
+
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+
+    const content = (message as { content?: unknown }).content;
+
+    if (typeof content === "string" && content.trim()) {
+      return content.trim();
+    }
+  }
+
+  return null;
+}
+
+function getAzureOpenAIErrorMessage(data: Record<string, unknown>, status: number) {
+  const error = data.error;
+
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  return `Azure OpenAI request failed with status ${status}.`;
+}
+
+async function generateWithAzureOpenAI(title: string, descriptionMessage: string, instructions: string) {
+  if (!azureOpenAIKey) {
+    throw new Error("Azure OpenAI credentials are missing.");
+  }
+
+  if (isAzureFoundryProjectEndpoint()) {
+    return generateWithAzureFoundryProject(title, descriptionMessage, instructions);
+  }
+
+  const response = await fetch(getAzureOpenAIChatCompletionsUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": azureOpenAIKey,
+    },
+    body: JSON.stringify({
+      messages: [
+        {
+          role: "system",
+          content: instructions,
+        },
+        {
+          role: "user",
+          content: buildProjectDescriptionInput(title, descriptionMessage),
+        },
+      ],
+      max_tokens: descriptionMaxOutputTokens,
+      temperature: 0.2,
+    }),
+  });
+
+  const text = await response.text();
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+
+  if (process.env.LOG_FULL_RESPONSE === "true") {
+    console.log(JSON.stringify(data, null, 2));
+  }
+
+  if (!response.ok) {
+    throw new Error(getAzureOpenAIErrorMessage(data, response.status));
+  }
+
+  return getDescriptionFromAzureOpenAIResponse(data);
+}
+
+async function generateWithAzureFoundryProject(title: string, descriptionMessage: string, instructions: string) {
+  if (!azureOpenAIKey || !azureOpenAIDeployment) {
+    throw new Error("Azure OpenAI credentials are missing.");
+  }
+
+  const response = await fetch(getAzureFoundryResponsesUrl(), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": azureOpenAIKey,
+    },
+    body: JSON.stringify({
+      model: azureOpenAIDeployment,
+      instructions,
+      input: buildProjectDescriptionInput(title, descriptionMessage),
+      max_output_tokens: descriptionMaxOutputTokens,
+      temperature: 0.2,
+    }),
+  });
+
+  const text = await response.text();
+  const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+
+  if (process.env.LOG_FULL_RESPONSE === "true") {
+    console.log(JSON.stringify(data, null, 2));
+  }
+
+  if (!response.ok) {
+    throw new Error(getAzureOpenAIErrorMessage(data, response.status));
+  }
+
+  return getDescriptionFromResponse(data);
 }
 
 async function requestDescriptionFromAzureAgent(title: string, descriptionMessage: string, instructions: string) {
@@ -462,14 +643,14 @@ export async function POST(request: Request) {
       return createRejectResponse();
     }
 
-    const description = await generateWithAzureAgent(title, descriptionMessage);
+    const description = await generateWithAi(title, descriptionMessage);
 
     if (description === descriptionRejectMessage) {
       return createRejectResponse();
     }
 
     if (!description) {
-      return NextResponse.json({ error: "Azure agent returned an empty description." }, { status: 502 });
+      return NextResponse.json({ error: "The AI service returned an empty description." }, { status: 502 });
     }
 
     return NextResponse.json({ description });

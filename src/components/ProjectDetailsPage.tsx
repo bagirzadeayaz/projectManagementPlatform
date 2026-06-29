@@ -350,7 +350,7 @@ export function ProjectDetailsPage() {
               />
             </label>
             {usersLoading ? <p className="project-users-note">Loading users...</p> : null}
-            {!usersLoading && users.length === 0 ? <p className="project-users-note">No approved users found.</p> : null}
+            {!usersLoading && users.length === 0 ? <p className="project-users-note">No users found.</p> : null}
             {!usersLoading && users.length > 0 && filteredUsers.length === 0 ? (
               <p className="project-users-note">No users match your search.</p>
             ) : null}

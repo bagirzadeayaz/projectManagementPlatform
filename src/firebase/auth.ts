@@ -11,7 +11,6 @@ import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updat
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { auth, db, storage, useMemoryAuthPersistence } from "./config";
-import { findPendingUserByEmail, requestPendingUser } from "../services/registration.service";
 
 export type AuthCredentials = {
   email: string;
@@ -159,29 +158,37 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
   if (profile.status === emailUnverifiedStatus) {
     if (!credential.user.emailVerified) {
       await signOut(auth);
-      throw new Error("Verify your email address before your registration request is sent. Check your inbox for the Firebase verification email.");
+      throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
     }
 
     await updateDoc(doc(db, "users", profile.docId), {
-      status: "pending",
+      status: "approved",
       emailVerified: true,
       updatedAt: serverTimestamp(),
     });
 
-    await requestPendingUser({
-      name: profile.name,
-      email: profile.email,
-      uid: profile.uid,
-      role: profile.role || "user",
-    });
-
-    await signOut(auth);
-    throw new Error("Registration request submitted. Wait for admin approval before signing in.");
+    return {
+      ...profile,
+      status: "approved",
+    };
   }
 
   if (profile.status === "pending") {
-    await signOut(auth);
-    throw new Error("Account is waiting for admin approval.");
+    if (!credential.user.emailVerified) {
+      await signOut(auth);
+      throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
+    }
+
+    await updateDoc(doc(db, "users", profile.docId), {
+      status: "approved",
+      emailVerified: true,
+      updatedAt: serverTimestamp(),
+    });
+
+    return {
+      ...profile,
+      status: "approved",
+    };
   }
 
   if (profile.status === "denied") {
@@ -194,17 +201,6 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
 
 export async function registerWithEmail({ email, password, name }: AuthCredentials) {
   await useMemoryAuthPersistence();
-
-  const pendingUser = await findPendingUserByEmail(email);
-
-  if (pendingUser?.status === "pending") {
-    throw new Error("Registration request is waiting for admin approval.");
-  }
-
-  if (pendingUser?.status === "denied") {
-    throw new Error("Registration request was denied.");
-  }
-
 
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const user = credential.user;
@@ -237,7 +233,7 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
   await sendEmailVerification(user);
 
   await signOut(auth);
-  throw new Error("Verification email sent. Verify your email address, then sign in again to submit your registration request for admin approval.");
+  throw new Error("Verification email sent. Verify your email address, then sign in again to complete registration.");
 }
 
 export async function resetPassword(email: string) {

@@ -201,6 +201,9 @@ Output requirements:
 - Target ${descriptionTargetMinCharacters}-${descriptionTargetMaxCharacters} characters.
 - No markdown, bullets, labels, headings, quotation marks, or intro text.
 - Remove filler words before answering.
+- Detect the language of the project title and respond in the same language.
+- If multiple languages are present, prefer the title language.
+- Do not translate into English unless the input is English.
 - If your draft is over ${descriptionMaxCharacters} characters, rewrite it internally until it fits.
 ${retryInstructions}
 Return only the final description.`;

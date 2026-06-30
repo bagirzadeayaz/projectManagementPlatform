@@ -1,7 +1,7 @@
 import { arrayRemove, collection, deleteDoc, doc, getDoc, getDocs, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
 
 import { db } from "../firebase/config";
-import { adminRole, normalizeRole, userRole } from "../utils/roles";
+import { adminRole, normalizeRole, superAdminRole, userRole } from "../utils/roles";
 
 export type ProjectUser = {
   uid: string;
@@ -89,7 +89,7 @@ export async function updateProjectUser(uid: string, update: ProjectUserUpdate) 
   if (typeof update.role === "string") {
     const nextRole = normalizeRole(update.role);
 
-    if (nextRole === adminRole || nextRole === userRole) {
+    if (nextRole === adminRole || nextRole === superAdminRole || nextRole === userRole) {
       updates.role = nextRole;
     }
   }

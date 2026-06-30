@@ -14,7 +14,7 @@ import {
   PROJECT_STATUSES,
 } from "../services/project.service";
 import { getProjectStatusLabel } from "../utils/labels";
-import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
+import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
@@ -48,25 +48,25 @@ export function NewProjectPage() {
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const minimumDeadline = getTodayDateInputValue();
-  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
-  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
+  const assignableUsers = users.filter(isAssignableUser);
+  const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
     ? assignableUsers.filter((projectUser) =>
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
     : assignableUsers;
-  const selectedUserIds = userIds;
+  const selectedUserIds = userIds.filter((selectedUserId) => assignableUserIds.has(selectedUserId));
   const selectedParticipantUsers = selectedUserIds
     .map((selectedUserId) => assignableUsers.find((projectUser) => projectUser.uid === selectedUserId))
     .filter((projectUser): projectUser is (typeof assignableUsers)[number] => Boolean(projectUser));
   const canCreateProject = user ? isAdminRole(user.role) : false;
 
   useEffect(() => {
-    if (leaderId && !selectedUserIds.includes(leaderId)) {
+    if (leaderId && (!selectedUserIds.includes(leaderId) || !assignableUserIds.has(leaderId))) {
       setLeaderId("");
     }
-  }, [leaderId, selectedUserIds]);
+  }, [assignableUserIds, leaderId, selectedUserIds]);
 
   if (!user) {
     return (
@@ -97,12 +97,14 @@ export function NewProjectPage() {
       return;
     }
 
-    if (selectedUserIds.length === 0) {
+    const selectedAssignableUserIds = userIds.filter((selectedUserId) => assignableUserIds.has(selectedUserId));
+
+    if (selectedAssignableUserIds.length === 0) {
       setUsersSelectionError(t("selectProjectUser"));
       return;
     }
 
-    if (!leaderId || !selectedUserIds.includes(leaderId)) {
+    if (!leaderId || !selectedAssignableUserIds.includes(leaderId) || !assignableUserIds.has(leaderId)) {
       setUsersSelectionError(t("selectProjectLeader"));
       return;
     }
@@ -114,7 +116,7 @@ export function NewProjectPage() {
         status,
         deadline,
         leaderId,
-        userIds: selectedUserIds,
+        userIds: selectedAssignableUserIds,
       },
       user.uid,
     );
@@ -122,22 +124,16 @@ export function NewProjectPage() {
   };
 
   const toggleProjectUser = (selectedUserId: string) => {
+    if (!assignableUserIds.has(selectedUserId)) {
+      return;
+    }
+
     setUsersSelectionError(null);
-    setUserIds((currentUserIds) => {
-      const nextUserIds = currentUserIds.includes(selectedUserId)
+    setUserIds((currentUserIds) =>
+      currentUserIds.includes(selectedUserId)
         ? currentUserIds.filter((currentUserId) => currentUserId !== selectedUserId)
-        : [...currentUserIds, selectedUserId];
-
-      if (!leaderId && nextUserIds.includes(selectedUserId)) {
-        setLeaderId(selectedUserId);
-      }
-
-      if (leaderId === selectedUserId && !nextUserIds.includes(selectedUserId)) {
-        setLeaderId(nextUserIds[0] ?? "");
-      }
-
-      return nextUserIds;
-    });
+        : [...currentUserIds, selectedUserId],
+    );
   };
 
   const handleGenerateDescription = async () => {

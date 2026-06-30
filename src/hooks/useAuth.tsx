@@ -25,6 +25,7 @@ import {
 } from "../utils/i18n";
 
 type AuthAction = (credentials: AuthCredentials) => Promise<void>;
+type LoginAction = (credentials: AuthCredentials) => Promise<DbUser>;
 
 type AuthContextValue = {
   user: DbUser | null;
@@ -34,7 +35,7 @@ type AuthContextValue = {
   clearError: () => void;
   setLanguage: (language: Language) => void;
   t: (key: TranslationKey, replacements?: Record<string, string | number>) => string;
-  login: AuthAction;
+  login: LoginAction;
   register: AuthAction;
   resendVerificationEmail: AuthAction;
   sendResetEmail: (email: string) => Promise<unknown>;
@@ -153,9 +154,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login: AuthAction = async (credentials) => {
+  const login: LoginAction = async (credentials) => {
     const profile = await runAuthAction(() => loginWithEmail(credentials));
     setUser(profile);
+    return profile;
   };
 
   const register: AuthAction = async (credentials) => {

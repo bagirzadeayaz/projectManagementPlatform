@@ -3053,31 +3053,12 @@ a {
 }
 
 .app-sidebar-brand {
-  align-items: center;
   border-bottom: 1px solid var(--app-border);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
   padding: 4px 4px 14px;
 }
 
-.app-sidebar-logo {
-  align-items: center;
-  background: var(--app-accent);
-  border-radius: 10px;
-  box-shadow: 0 10px 24px rgb(169 41 41 / 22%);
-  color: #fff;
-  display: inline-flex;
-  font-size: 0.78rem;
-  font-weight: 900;
-  height: 38px;
-  justify-content: center;
-  letter-spacing: 0;
-  width: 38px;
-}
-
 .app-sidebar-brand strong,
-.app-sidebar-user strong {
+.app-sidebar-profile-copy strong {
   color: var(--app-text);
   display: block;
   font-size: 0.92rem;
@@ -3087,8 +3068,8 @@ a {
   white-space: nowrap;
 }
 
-.app-sidebar-brand span:not(.app-sidebar-logo),
-.app-sidebar-user span:not(.app-sidebar-avatar) {
+.app-sidebar-brand span,
+.app-sidebar-profile-copy span {
   color: var(--app-text-muted);
   display: block;
   font-size: 0.78rem;
@@ -3111,11 +3092,9 @@ a {
   border: 1px solid transparent;
   border-radius: var(--app-radius);
   color: var(--app-text-muted);
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   min-height: 44px;
-  padding: 7px 9px;
+  padding: 7px 12px;
   position: relative;
   text-decoration: none;
   transition:
@@ -3140,20 +3119,6 @@ a {
     opacity 160ms ease,
     transform 160ms ease;
   width: 3px;
-}
-
-.app-sidebar-link > span {
-  align-items: center;
-  background: var(--app-surface-muted);
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  color: var(--app-text);
-  display: inline-flex;
-  font-size: 0.76rem;
-  font-weight: 900;
-  height: 28px;
-  justify-content: center;
-  width: 28px;
 }
 
 .app-sidebar-link strong {
@@ -3186,12 +3151,6 @@ a {
   transform: translateY(-50%) scaleY(1);
 }
 
-.app-sidebar-link-active > span {
-  background: var(--app-accent);
-  border-color: var(--app-accent);
-  color: #fff;
-}
-
 .app-sidebar-account {
   border-top: 1px solid var(--app-border);
   display: grid;
@@ -3201,9 +3160,34 @@ a {
 
 .app-sidebar-user {
   align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius);
+  color: inherit;
   display: grid;
   gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  padding: 8px;
+  text-decoration: none;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.app-sidebar-user:hover,
+.app-sidebar-user:focus-visible {
+  background: var(--app-surface-muted);
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow-sm);
+  outline: 0;
+  transform: translateY(-1px);
+}
+
+.app-sidebar-user-active {
+  background: var(--app-accent-soft);
+  border-color: var(--app-accent-border);
 }
 
 .app-sidebar-avatar {
@@ -3243,6 +3227,99 @@ a {
   gap: 16px;
   margin-bottom: 18px;
   padding: 16px;
+}
+
+.admin-project-create-card {
+  align-items: center;
+  background:
+    linear-gradient(135deg, var(--app-accent-soft), var(--app-surface) 52%);
+  border-color: var(--app-accent-border);
+  box-shadow: var(--app-shadow-sm);
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  overflow: hidden;
+  padding: 20px;
+  position: relative;
+}
+
+.admin-project-create-card::before {
+  background: var(--app-accent);
+  bottom: 16px;
+  border-radius: 999px;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 16px;
+  width: 4px;
+}
+
+.admin-project-create-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 8px;
+}
+
+.admin-project-create-copy h2 {
+  color: var(--app-text);
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 780;
+  letter-spacing: 0;
+  line-height: 1.08;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-project-create-copy p:not(.auth-kicker) {
+  color: var(--app-text-muted);
+  font-size: 0.95rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.admin-project-create-button {
+  flex: 0 0 auto;
+  gap: 10px;
+  min-width: 190px;
+  box-shadow: 0 14px 30px rgb(180 35 24 / 18%);
+}
+
+.admin-project-create-plus {
+  background: rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  height: 24px;
+  position: relative;
+  width: 24px;
+}
+
+.admin-project-create-plus {
+  color: transparent;
+  flex: 0 0 24px;
+}
+
+.admin-project-create-plus::before,
+.admin-project-create-plus::after {
+  background: currentColor;
+  border-radius: 999px;
+  content: "";
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.admin-project-create-plus::before {
+  background: #ffffff;
+  height: 2px;
+  width: 10px;
+}
+
+.admin-project-create-plus::after {
+  background: #ffffff;
+  height: 10px;
+  width: 2px;
 }
 
 .project-toolbar {
@@ -4011,8 +4088,11 @@ a {
   box-shadow: var(--app-shadow-sm);
   cursor: pointer;
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: 5px;
+  grid-template-rows: auto 1.25rem 1.2rem 26px 28px;
+  height: 150px;
+  overflow: hidden;
+  padding: 8px;
   touch-action: none;
   transition:
     border-color 150ms ease,
@@ -4028,8 +4108,12 @@ a {
   transform: translateY(-1px);
 }
 
+.task-board-card[draggable="true"] {
+  cursor: grab;
+}
+
 .task-board-card:active {
-  cursor: pointer;
+  cursor: grabbing;
 }
 
 .task-board-card-readonly,
@@ -4051,19 +4135,27 @@ a {
   display: flex;
   gap: 8px;
   justify-content: space-between;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .task-board-card-header > span:not(.ui-badge) {
   color: var(--app-text-muted);
   font-size: 0.78rem;
   font-weight: 750;
+  white-space: nowrap;
 }
 
 .task-board-card h3 {
   color: var(--app-text);
+  display: -webkit-box;
   font-size: 0.94rem;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  height: 1.25rem;
   line-height: 1.25;
   margin: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
@@ -4071,17 +4163,26 @@ a {
   color: var(--app-text-muted);
   display: -webkit-box;
   font-size: 0.84rem;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
-  line-height: 1.4;
+  height: 1.2rem;
+  line-height: 1.35;
   margin: 0;
   overflow: hidden;
 }
 
+.task-board-card p.task-board-description-empty {
+  color: transparent;
+}
+
 .task-board-assignees {
+  align-content: start;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 5px;
+  max-height: 26px;
+  min-height: 26px;
+  overflow: hidden;
 }
 
 .task-board-assignee,
@@ -4095,9 +4196,13 @@ a {
   font-size: 0.74rem;
   font-weight: 750;
   gap: 5px;
+  max-width: 100%;
   min-height: 24px;
   min-width: 0;
+  overflow: hidden;
   padding: 2px 8px 2px 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-board-unassigned {
@@ -4127,8 +4232,12 @@ a {
   display: flex;
   font-size: 0.78rem;
   gap: 8px;
+  height: 28px;
   justify-content: space-between;
-  padding-top: 8px;
+  margin-top: auto;
+  min-width: 0;
+  overflow: hidden;
+  padding-top: 6px;
 }
 
 .task-board-card footer strong {
@@ -4142,6 +4251,10 @@ a {
 
 .task-board-card footer span {
   flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-details-dialog {
@@ -4842,10 +4955,6 @@ a {
     padding: 0;
   }
 
-  .app-sidebar-brand div {
-    display: none;
-  }
-
   .app-sidebar-nav {
     display: flex;
     gap: 8px;
@@ -4885,7 +4994,19 @@ a {
   }
 
   .app-sidebar-user {
+    flex: 0 0 auto;
+    gap: 0;
+    grid-template-columns: auto;
+    padding: 4px;
+  }
+
+  .app-sidebar-profile-copy {
     display: none;
+  }
+
+  .app-sidebar-avatar {
+    height: 34px;
+    width: 34px;
   }
 
   .app-sidebar-logout {
@@ -4944,6 +5065,18 @@ a {
     display: grid;
     gap: 16px;
     grid-template-columns: 1fr;
+  }
+
+  .admin-project-create-card {
+    align-items: stretch;
+    display: grid;
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .admin-project-create-button {
+    min-width: 0;
+    width: 100%;
   }
 
   .projects-userbar {
@@ -5019,4 +5152,53 @@ a {
   .project-task-edit-dialog .project-task-form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.ui-badge,
+.project-open-text,
+.app-sidebar-link strong,
+.project-toolbar p,
+.project-user-option span,
+.project-user-option small,
+.field-label-row,
+.task-details-project-link {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-sidebar-link strong,
+.project-toolbar p,
+.project-user-option span,
+.project-user-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ui-button:not(.ui-button-size-icon) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-button-size-default {
+  min-height: 42px;
+  padding: 0 16px;
+}
+
+.ui-button-size-sm {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.ui-button-size-lg {
+  min-height: 54px;
+  padding: 0 22px;
+}
+
+.ui-badge,
+.project-open-text,
+.task-details-project-link {
+  max-width: 100%;
+  white-space: normal;
 }

@@ -27,7 +27,7 @@ import {
 } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
 import { getProjectStatusLabel } from "../utils/labels";
-import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
+import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader, SectionHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
@@ -168,8 +168,7 @@ export function ProjectDetailsPage() {
   const canViewNotes = Boolean(project && user && (canViewAllProjectTasks || isProjectUser));
   const canWriteNote = Boolean(project && user && isProjectUser);
   const canEditUsers = canDelete;
-  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
-  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
+  const assignableUsers = users.filter(isAssignableUser);
   const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch

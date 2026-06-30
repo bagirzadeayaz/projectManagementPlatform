@@ -451,13 +451,13 @@ function buildFallbackDescription(
   const normalizedProjectTitle = normalizeDescription(projectTitle);
 
   if (descriptionType === "task") {
-    if (language === "az") {
-      const projectContext = normalizedProjectTitle ? ` ${normalizedProjectTitle} layihÉ™si daxilindÉ™` : "";
+    if (language === 'az') {
+      const projectContext = normalizedProjectTitle ? ' ' + normalizedProjectTitle + ' layihəsi daxilində' : '';
       const contextSentence = normalizedContext
-        ? " VerilÉ™n mÉ™lumatlara É™sasÉ™n icra addÄ±mlarÄ± dÉ™qiqlÉ™ÅŸdirilir, nÉ™ticÉ™ tÉ™hvilÉ™ hazÄ±rlanÄ±r vÉ™ komanda ilÉ™ uyÄŸunluq yoxlanÄ±lÄ±r."
-        : " Ä°craÃ§Ä±lar tÉ™lÉ™blÉ™ri dÉ™qiqlÉ™ÅŸdirir, lazÄ±mi iÅŸi tamamlayÄ±r vÉ™ nÉ™ticÉ™ni layihÉ™ mÉ™qsÉ™dlÉ™ri ilÉ™ uyÄŸun ÅŸÉ™kildÉ™ tÉ™hvil verir.";
+        ? ' Verilən məlumatlara əsasən icra addımları dəqiqləşdirilir, nəticə təhvilə hazırlanır və komanda ilə uyğunluq yoxlanılır.'
+        : ' İcraçılar tələbləri dəqiqləşdirir, lazımi işi tamamlayır və nəticəni layihə məqsədləri ilə uyğun şəkildə təhvil verir.';
 
-      return clampDescription(`${normalizedTitle} tapÅŸÄ±rÄ±ÄŸÄ±${projectContext} konkret nÉ™ticÉ™ yaratmaq Ã¼Ã§Ã¼n planlaÅŸdÄ±rÄ±lÄ±r.${contextSentence}`);
+      return clampDescription(normalizedTitle + ' tapşırığı' + projectContext + ' konkret nəticə yaratmaq üçün planlaşdırılır.' + contextSentence);
     }
 
     const projectContext = normalizedProjectTitle ? ` within the ${normalizedProjectTitle} project` : "";
@@ -468,13 +468,13 @@ function buildFallbackDescription(
     return clampDescription(`${normalizedTitle} is a task${projectContext} focused on producing a concrete deliverable.${contextSentence}`);
   }
 
-  if (language === "az") {
+  if (language === 'az') {
     const contextSentence = normalizedContext
-      ? " Verilən məlumatlar əsasında komanda əsas tələbləri dəqiqləşdirir, icra addımlarını planlaşdırır və nəticələri izləyir."
-      : " Komanda əsas məqsədləri müəyyənləşdirir, tapşırıqları planlaşdırır və nəticələri mərhələli şəkildə izləyir.";
+      ? ' Verilən məlumatlar əsasında komanda əsas tələbləri dəqiqləşdirir, icra addımlarını planlaşdırır və nəticələri izləyir.'
+      : ' Komanda əsas məqsədləri müəyyənləşdirir, tapşırıqları planlaşdırır və nəticələri mərhələli şəkildə izləyir.';
 
     return clampDescription(
-      `${normalizedTitle} layihəsi məqsədləri, tapşırıqları və icra prosesini vahid şəkildə idarə etmək üçün nəzərdə tutulur.${contextSentence}`,
+      normalizedTitle + ' layihəsi məqsədləri, tapşırıqları və icra prosesini vahid şəkildə idarə etmək üçün nəzərdə tutulur.' + contextSentence,
     );
   }
 

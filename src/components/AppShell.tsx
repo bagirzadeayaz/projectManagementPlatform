@@ -32,41 +32,38 @@ function AppSidebar() {
   const canEdit = canManageProjects(user.role);
   const panelLabel = isSuperAdminRole(user.role) ? t("superAdminPanel") : t("adminPanel");
   const displayName = user.name || user.email;
+  const profileActive = pathname.startsWith("/personalization");
   const navItems = [
-    {
-      glyph: canEdit ? "P" : "T",
-      href: "/projects",
-      isActive: pathname === "/projects" || pathname === "/myprojects" || (pathname.startsWith("/projects/") && pathname !== "/projects/new"),
-      label: canEdit ? t("projects") : t("myTasks"),
-    },
     ...(canEdit
       ? [
           {
-            glyph: "+",
-            href: "/projects/new",
-            isActive: pathname === "/projects/new",
-            label: t("addProject"),
-          },
-          {
-            glyph: "S",
             href: "/statistics",
             isActive: pathname.startsWith("/statistics"),
             label: t("statistics"),
           },
           {
-            glyph: "U",
+            href: "/projects",
+            isActive: pathname === "/projects" || pathname.startsWith("/projects/"),
+            label: t("projects"),
+          },
+          {
             href: "/registrations",
             isActive: pathname.startsWith("/registrations"),
             label: t("appUsers"),
           },
         ]
-      : []),
-    {
-      glyph: getInitial(displayName),
-      href: "/personalization",
-      isActive: pathname.startsWith("/personalization"),
-      label: t("profile"),
-    },
+      : [
+          {
+            href: "/projects",
+            isActive: pathname === "/projects",
+            label: t("myTasks"),
+          },
+          {
+            href: "/myprojects",
+            isActive: pathname === "/myprojects" || (pathname.startsWith("/projects/") && pathname !== "/projects/new"),
+            label: t("myProjects"),
+          },
+        ]),
   ];
 
   const handleSignOut = async () => {
@@ -79,7 +76,6 @@ function AppSidebar() {
     <>
       <aside className="app-sidebar" aria-label={t("workspace")}>
         <div className="app-sidebar-brand">
-          <span className="app-sidebar-logo" aria-hidden="true">PM</span>
           <div>
             <strong>{t("workspace")}</strong>
             <span>{canEdit ? panelLabel : t("tasks")}</span>
@@ -94,22 +90,25 @@ function AppSidebar() {
               href={item.href}
               key={item.href}
             >
-              <span aria-hidden="true">{item.glyph}</span>
               <strong>{item.label}</strong>
             </Link>
           ))}
         </nav>
 
         <div className="app-sidebar-account">
-          <div className="app-sidebar-user">
+          <Link
+            aria-current={profileActive ? "page" : undefined}
+            className={`app-sidebar-user${profileActive ? " app-sidebar-user-active" : ""}`}
+            href="/personalization"
+          >
             <span className="app-sidebar-avatar" aria-hidden="true">
               {user.photoURL ? <img alt="" src={user.photoURL} /> : getInitial(displayName)}
             </span>
-            <div>
+            <div className="app-sidebar-profile-copy">
               <strong>{displayName}</strong>
               <span>{getRoleLabel(user.role, language)}</span>
             </div>
-          </div>
+          </Link>
           <Button className="app-sidebar-logout" disabled={busy} onClick={() => setConfirmingSignOut(true)} size="sm" type="button" variant="secondary">
             {t("logout")}
           </Button>

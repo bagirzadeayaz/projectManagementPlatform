@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
 import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
+import { isAdminRole } from "../utils/roles";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -16,6 +17,9 @@ import { Tabs, TabsTrigger } from "./ui/tabs";
 
 type AuthMode = "login" | "register";
 
+function getHomePath(role?: string) {
+  return role && isAdminRole(role) ? "/statistics" : "/projects";
+}
 
 export function AuthForm() {
   const router = useRouter();
@@ -54,11 +58,11 @@ export function AuthForm() {
     try {
       if (isRegistering) {
         await register(credentials);
+        router.push("/projects");
       } else {
-        await login(credentials);
+        const profile = await login(credentials);
+        router.push(getHomePath(profile?.role));
       }
-
-      router.push("/projects");
     } catch {
       // The hook already formats and stores the visible error.
     }
@@ -116,7 +120,7 @@ export function AuthForm() {
           <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} type="button" variant="secondary">
             {busy ? t("logoutBusy") : t("logout")}
           </Button>
-          <Button onClick={() => router.push("/projects")} type="button">
+          <Button onClick={() => router.push(getHomePath(user.role))} type="button">
             {t("openProjects")}
           </Button>
         </CardContent>

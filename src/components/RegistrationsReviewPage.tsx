@@ -137,7 +137,7 @@ function ActiveUsersPanel({
       name: editName.trim(),
     };
 
-    if (canChangeEditingUserRole && editRole !== superAdminRole) {
+    if (canChangeEditingUserRole) {
       update.role = editRole;
     }
 
@@ -379,7 +379,7 @@ function ActiveUsersPanel({
                 >
                   <option value={userRole}>{getRoleLabel(userRole, language)}</option>
                   <option value={adminRole}>{getRoleLabel(adminRole, language)}</option>
-                  {normalizeRole(editingUser.role) === superAdminRole ? (
+                  {canChangeEditingUserRole || normalizeRole(editingUser.role) === superAdminRole ? (
                     <option value={superAdminRole}>{getRoleLabel(superAdminRole, language)}</option>
                   ) : null}
                 </Select>

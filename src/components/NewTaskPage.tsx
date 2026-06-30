@@ -16,7 +16,7 @@ import {
   type Project,
 } from "../services/project.service";
 import { getProjectStatusLabel } from "../utils/labels";
-import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
+import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
@@ -57,8 +57,7 @@ export function NewTaskPage() {
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const minimumDeadline = getTodayDateInputValue();
-  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
-  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
+  const assignableUsers = users.filter(isAssignableUser);
   const projectUserIdSet = new Set(project?.userIds ?? []);
   const taskAssignableUsers = assignableUsers.filter((projectUser) => projectUserIdSet.has(projectUser.uid));
   const taskAssignableUserIds = new Set(taskAssignableUsers.map((projectUser) => projectUser.uid));

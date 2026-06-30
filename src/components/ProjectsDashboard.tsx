@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
 import { useProjectUsers } from "../hooks/useProjectUsers";
@@ -13,7 +14,7 @@ import { isAdminRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { FieldLabel } from "./ui/field";
@@ -39,7 +40,7 @@ function DashboardTaskAvatar({ projectUser }: { projectUser: ProjectUser }) {
   const displayName = getUserDisplayName(projectUser);
 
   if (projectUser.photoURL) {
-    return <img alt="" className="task-board-assignee-avatar" src={projectUser.photoURL} />;
+    return <img alt="" className="task-board-assignee-avatar" draggable={false} src={projectUser.photoURL} />;
   }
 
   return (
@@ -439,12 +440,22 @@ function AdminStatistics({
   );
 }
 
-function ProjectCard({ project, tasks }: { project: Project; tasks: ProjectTask[] }) {
+function ProjectCard({
+  actionLabel,
+  href,
+  project,
+  tasks,
+}: {
+  actionLabel?: string;
+  href?: string;
+  project: Project;
+  tasks: ProjectTask[];
+}) {
   const { language, t } = useAuth();
 
   return (
     <Card className="project-card project-card-link">
-      <Link className="project-card-anchor" href={`/projects/${project.id}`}>
+      <Link className="project-card-anchor" href={href ?? `/projects/${project.id}`}>
         <CardHeader className="project-card-header">
           <div>
             <Badge className={getStatusClass(project.status)}>{getProjectStatusLabel(project.status, language)}</Badge>
@@ -457,7 +468,7 @@ function ProjectCard({ project, tasks }: { project: Project; tasks: ProjectTask[
         </CardContent>
         <CardFooter className="project-card-footer">
           {project.deadline ? <p className="project-meta">{t("deadline")}: {project.deadline}</p> : <p className="project-meta">{t("noDeadline")}</p>}
-          <span className="project-open-text">{t("openDetails")}</span>
+          <span className="project-open-text">{actionLabel ?? t("openDetails")}</span>
         </CardFooter>
       </Link>
     </Card>
@@ -481,7 +492,6 @@ function UserTaskBoard({
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [dragReadyTaskId, setDragReadyTaskId] = useState<string | null>(null);
   const [selectedTaskItem, setSelectedTaskItem] = useState<UserTaskItem | null>(null);
-  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didDragRef = useRef(false);
   const longPressClickBlockRef = useRef(false);
   const pressPointRef = useRef<{ taskId: string; x: number; y: number } | null>(null);
@@ -493,17 +503,9 @@ function UserTaskBoard({
       .map((taskUserId) => userById.get(taskUserId))
       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser))
     : [];
-  const clearPressTimer = () => {
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
-    }
-  };
   const clearDragStateSoon = () => {
     window.setTimeout(() => {
-      if (!didDragRef.current) {
-        setDragReadyTaskId(null);
-      }
+      setDragReadyTaskId(null);
     }, 120);
   };
 
@@ -521,6 +523,7 @@ function UserTaskBoard({
               onDrop={(event) => {
                 event.preventDefault();
                 const transferValue = event.dataTransfer.getData("application/json");
+                setDragReadyTaskId(null);
 
                 if (!transferValue) {
                   return;
@@ -560,7 +563,7 @@ function UserTaskBoard({
                   return (
                     <article
                       className={`task-board-card${draggingTaskId === task.id ? " task-board-card-dragging" : ""}${canMove ? "" : " task-board-card-readonly"}${dragReadyTaskId === task.id ? " task-board-card-drag-ready" : ""}`}
-                      draggable={dragReadyTaskId === task.id && canStartDragTask}
+                      draggable={canStartDragTask}
                       key={task.id}
                       onClick={() => {
                         if (didDragRef.current || longPressClickBlockRef.current) {
@@ -572,18 +575,19 @@ function UserTaskBoard({
                         setSelectedTaskItem(taskItem);
                       }}
                       onDragEnd={() => {
-                        clearPressTimer();
                         setDraggingTaskId(null);
                         setDragReadyTaskId(null);
                       }}
                       onDragStart={(event) => {
-                        if (!canStartDragTask || dragReadyTaskId !== task.id) {
+                        if (!canStartDragTask) {
                           event.preventDefault();
                           return;
                         }
 
                         didDragRef.current = true;
+                        longPressClickBlockRef.current = true;
                         setDraggingTaskId(task.id);
+                        setDragReadyTaskId(task.id);
                         event.dataTransfer.effectAllowed = "move";
                         event.dataTransfer.setData("application/json", JSON.stringify({
                           projectId: project.id,
@@ -592,7 +596,6 @@ function UserTaskBoard({
                         }));
                       }}
                       onPointerCancel={() => {
-                        clearPressTimer();
                         pressPointRef.current = null;
                         setDragReadyTaskId(null);
                       }}
@@ -601,25 +604,18 @@ function UserTaskBoard({
                           return;
                         }
 
-                        clearPressTimer();
                         didDragRef.current = false;
                         longPressClickBlockRef.current = false;
                         pressPointRef.current = { taskId: task.id, x: event.clientX, y: event.clientY };
 
                         if (!canStartDragTask) {
+                          setDragReadyTaskId(null);
                           return;
                         }
 
-                        pressTimerRef.current = setTimeout(() => {
-                          longPressClickBlockRef.current = true;
-                          setDragReadyTaskId(task.id);
-                        }, 120);
+                        setDragReadyTaskId(task.id);
                       }}
                       onPointerMove={(event) => {
-                        if (!canStartDragTask || dragReadyTaskId === task.id) {
-                          return;
-                        }
-
                         const pressPoint = pressPointRef.current;
 
                         if (!pressPoint || pressPoint.taskId !== task.id) {
@@ -628,14 +624,15 @@ function UserTaskBoard({
 
                         const movedDistance = Math.hypot(event.clientX - pressPoint.x, event.clientY - pressPoint.y);
 
-                        if (movedDistance > 5) {
-                          clearPressTimer();
+                        if (movedDistance > 3) {
                           longPressClickBlockRef.current = true;
-                          setDragReadyTaskId(task.id);
+
+                          if (canStartDragTask) {
+                            setDragReadyTaskId(task.id);
+                          }
                         }
                       }}
                       onPointerUp={() => {
-                        clearPressTimer();
                         pressPointRef.current = null;
                         clearDragStateSoon();
                       }}
@@ -645,7 +642,9 @@ function UserTaskBoard({
                         {savingTaskId === task.id ? <span>{t("saving")}</span> : null}
                       </div>
                       <h3>{task.title}</h3>
-                      {task.description ? <p>{task.description}</p> : null}
+                      <p className={task.description ? "" : "task-board-description-empty"}>
+                        {task.description || t("descriptionMissing")}
+                      </p>
                       <div className="task-board-assignees" aria-label={t("taskParticipants")}>
                         {assignedUsers.length > 0 ? (
                           assignedUsers.map((taskUser) => (
@@ -730,6 +729,9 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
   const { user, language, t } = useAuth();
   const { projects, tasksByProjectId, loading, error, refresh, saveTaskStatus, savingTaskId } = useProjects();
   const { users } = useProjectUsers(Boolean(user));
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectSort, setProjectSort] = useState<ProjectSort>("deadline-asc");
@@ -748,15 +750,25 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
   const isAdminStatisticsView = canEdit && isStatisticsView;
   const canSeeAllProjectTasks = (project: Project) => canEdit || project.leaderId === user.uid;
   const canAccessProjectTasks = (project: Project) =>
-    canSeeAllProjectTasks(project) || (tasksByProjectId[project.id] ?? []).some((task) => task.userIds.includes(user.uid));
+    canSeeAllProjectTasks(project) ||
+    project.userIds.includes(user.uid) ||
+    (tasksByProjectId[project.id] ?? []).some((task) => task.userIds.includes(user.uid));
   const visibleProjects = canEdit
     ? projects
     : projects.filter(canAccessProjectTasks);
+  const selectedProjectParam = searchParams.get("projectId") ?? "all";
+  const projectFilterId = !canEdit && visibleProjects.some((project) => project.id === selectedProjectParam)
+    ? selectedProjectParam
+    : "all";
+  const userProjectOptions = sortProjects(visibleProjects, "deadline-asc");
   const userTaskItems = visibleProjects.flatMap((project) =>
     (tasksByProjectId[project.id] ?? [])
       .filter((task) => canSeeAllProjectTasks(project) || task.userIds.includes(user.uid))
       .map((task) => ({ canMove: canEdit || task.userIds.includes(user.uid), project, task })),
   );
+  const scopedUserTaskItems = projectFilterId === "all"
+    ? userTaskItems
+    : userTaskItems.filter(({ project }) => project.id === projectFilterId);
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredProjects = sortProjects(
     visibleProjects.filter((project) => {
@@ -769,7 +781,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     }),
     projectSort,
   );
-  const filteredUserTaskItems = userTaskItems.filter(({ project, task }) => {
+  const filteredUserTaskItems = scopedUserTaskItems.filter(({ project, task }) => {
     if (!normalizedSearchQuery) {
       return true;
     }
@@ -777,6 +789,18 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     return `${project.name} ${task.title} ${task.description} ${task.status} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
   });
   const showingStatistics = isAdminStatisticsView;
+  const handleUserProjectFilterChange = (nextProjectId: string) => {
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+
+    if (nextProjectId === "all") {
+      nextSearchParams.delete("projectId");
+    } else {
+      nextSearchParams.set("projectId", nextProjectId);
+    }
+
+    const nextQuery = nextSearchParams.toString();
+    router.push(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  };
 
   return (
     <main className="projects-page">
@@ -787,14 +811,55 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
             ? t("adminStatisticsSubtitle")
             : canEdit
               ? isMyProjectsView ? t("myProjectsSubtitle") : t("projectsFirestoreSubtitle")
-              : t("taskBoardSubtitle")
+              : isMyProjectsView ? t("myProjectsSubtitle") : t("taskBoardSubtitle")
         }
-        title={isAdminStatisticsView ? t("statistics") : canEdit ? (isMyProjectsView ? t("myProjects") : t("projects")) : t("myTasks")}
+        title={isAdminStatisticsView ? t("statistics") : canEdit ? (isMyProjectsView ? t("myProjects") : t("projects")) : isMyProjectsView ? t("myProjects") : t("myTasks")}
       />
 
       {error ? <p className="auth-message auth-message-error">{error}</p> : null}
 
-      {!canEdit ? (
+      {!canEdit && isMyProjectsView ? (
+        <>
+          <Card className="dashboard-control-panel">
+            <section className="project-toolbar">
+              <p>
+                {t("projectsShown", { shown: filteredProjects.length, total: visibleProjects.length })}
+              </p>
+              <Button disabled={loading} onClick={refresh} size="sm" type="button" variant="secondary">
+                {loading ? t("refreshing") : t("refresh")}
+              </Button>
+            </section>
+            <Separator />
+            <FieldLabel>
+              <span>{t("search")}</span>
+              <Input
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t("searchProjects")}
+                type="search"
+                value={searchQuery}
+              />
+            </FieldLabel>
+          </Card>
+
+          {loading ? <section className="empty-state">{t("loadingProjects")}</section> : null}
+          {!loading && visibleProjects.length === 0 ? <section className="empty-state">{t("noProjectsAssigned")}</section> : null}
+          {!loading && visibleProjects.length > 0 && filteredProjects.length === 0 ? (
+            <section className="empty-state">{t("noMatchingProjects")}</section>
+          ) : null}
+
+          <section className="projects-grid">
+            {filteredProjects.map((project) => (
+              <ProjectCard
+                actionLabel={t("myTasks")}
+                href={`/projects?projectId=${encodeURIComponent(project.id)}`}
+                key={project.id}
+                project={project}
+                tasks={(tasksByProjectId[project.id] ?? []).filter((task) => canSeeAllProjectTasks(project) || task.userIds.includes(user.uid))}
+              />
+            ))}
+          </section>
+        </>
+      ) : !canEdit ? (
         <>
           <Card className="dashboard-control-panel">
             <section className="project-toolbar">
@@ -806,20 +871,35 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
               </Button>
             </section>
             <Separator />
-            <FieldLabel>
-              <span>{t("search")}</span>
-              <Input
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={t("searchTasks")}
-                type="search"
-                value={searchQuery}
-              />
-            </FieldLabel>
+            <section className="project-filters" aria-label={`${t("projects")}, ${t("search")}`}>
+              <FieldLabel>
+                <span>{t("projects")}</span>
+                <Select onChange={(event) => handleUserProjectFilterChange(event.target.value)} value={projectFilterId}>
+                  <option value="all">{t("allProjects")}</option>
+                  {userProjectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel>
+                <span>{t("search")}</span>
+                <Input
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("searchTasks")}
+                  type="search"
+                  value={searchQuery}
+                />
+              </FieldLabel>
+            </section>
           </Card>
 
           {loading ? <section className="empty-state">{t("loadingTasks")}</section> : null}
-          {!loading && userTaskItems.length === 0 ? <section className="empty-state">{t("noTasks")}</section> : null}
-          {!loading && userTaskItems.length > 0 && filteredUserTaskItems.length === 0 ? (
+          {!loading && visibleProjects.length === 0 ? <section className="empty-state">{t("noProjectsAssigned")}</section> : null}
+          {!loading && visibleProjects.length > 0 && scopedUserTaskItems.length === 0 ? <section className="empty-state">{t("noTasks")}</section> : null}
+          {!loading && scopedUserTaskItems.length > 0 && filteredUserTaskItems.length === 0 ? (
             <section className="empty-state">{t("noMatchingTasks")}</section>
           ) : null}
           <UserTaskBoard
@@ -834,6 +914,17 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
         <AdminStatistics loading={loading} onRefresh={refresh} projects={visibleProjects} tasksByProjectId={tasksByProjectId} />
       ) : (
         <>
+          <Card className="admin-project-create-card">
+            <div className="admin-project-create-copy">
+              <p className="auth-kicker">{t("createProject")}</p>
+              <h2>{t("addProject")}</h2>
+            </div>
+            <Link className={buttonVariants({ className: "admin-project-create-button", size: "lg" })} href="/projects/new">
+              <span aria-hidden="true" className="admin-project-create-plus">+</span>
+              {t("createProject")}
+            </Link>
+          </Card>
+
           <Card className="dashboard-control-panel">
             <section className="project-toolbar">
               <p>

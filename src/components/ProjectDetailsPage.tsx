@@ -170,6 +170,7 @@ export function ProjectDetailsPage() {
   const canEditUsers = canDelete;
   const assignableUsers = users.filter(isAssignableUser);
   const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
+  const projectLeaderUserIds = new Set(users.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
     ? assignableUsers.filter((projectUser) =>
@@ -183,10 +184,6 @@ export function ProjectDetailsPage() {
     project?.userIds
       .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser)) ?? [];
-  const activeParticipantUsers = userIds
-    .map((projectUserId) => assignableUsers.find((projectUser) => projectUser.uid === projectUserId))
-    .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
-  const isLeaderInActiveParticipants = activeParticipantUsers.some((projectUser) => projectUser.uid === leaderId);
   const visibleNotes = notes.filter((note) => currentProjectUserIds.has(note.userId));
   const ownNote = user ? visibleNotes.find((note) => note.userId === user.uid) : undefined;
   const visibleTasks = canDelete ? tasks : [];
@@ -350,14 +347,14 @@ export function ProjectDetailsPage() {
 
     const nextLeaderId = canDelete ? leaderId : project.leaderId;
     const selectedAssignableUserIds = userIds.filter((projectUserId) => assignableUserIds.has(projectUserId));
-    const nextUserIds = Array.from(new Set([nextLeaderId, ...selectedAssignableUserIds].filter(Boolean)));
+    const nextUserIds = Array.from(new Set(selectedAssignableUserIds));
 
     if (canEditUsers && nextUserIds.length === 0) {
       setUsersSelectionError(t("selectProjectUser"));
       return;
     }
 
-    if (canEditUsers && (!nextLeaderId || !assignableUserIds.has(nextLeaderId))) {
+    if (canEditUsers && (!nextLeaderId || !projectLeaderUserIds.has(nextLeaderId))) {
       setUsersSelectionError(t("selectProjectLeader"));
       return;
     }
@@ -650,7 +647,7 @@ export function ProjectDetailsPage() {
   };
 
   const toggleProjectUser = (selectedUserId: string) => {
-    if (!canEditUsers || selectedUserId === leaderId || !assignableUserIds.has(selectedUserId)) {
+    if (!canEditUsers || !assignableUserIds.has(selectedUserId)) {
       return;
     }
 
@@ -968,15 +965,13 @@ export function ProjectDetailsPage() {
             <FieldLabel>
               <span>{t("projectLeader")}</span>
               <Select
-                onChange={(event) => {
-                  setLeaderId(event.target.value);
-                  setUserIds((currentUserIds) => Array.from(new Set([event.target.value, ...currentUserIds])));
-                }}
+                disabled={users.length === 0}
+                onChange={(event) => setLeaderId(event.target.value)}
                 required
-                value={isLeaderInActiveParticipants ? leaderId : ""}
+                value={projectLeaderUserIds.has(leaderId) ? leaderId : ""}
               >
                 <option value="">{t("selectProjectLeader")}</option>
-                {activeParticipantUsers.map((projectUser) => (
+                {users.map((projectUser) => (
                   <option key={projectUser.uid} value={projectUser.uid}>
                     {projectUser.name || projectUser.email}
                   </option>
@@ -1008,7 +1003,7 @@ export function ProjectDetailsPage() {
                     <label className="project-user-option" key={projectUser.uid}>
                       <Checkbox
                         checked={userIds.includes(projectUser.uid)}
-                        disabled={!canEditUsers || projectUser.uid === leaderId}
+                        disabled={!canEditUsers}
                         onChange={() => toggleProjectUser(projectUser.uid)}
                       />
                       <span>{projectUser.name || projectUser.email}</span>

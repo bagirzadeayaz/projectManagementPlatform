@@ -92,7 +92,7 @@ function toProject(projectId: string, data: Record<string, unknown>): Project {
     deadline: readString(data.deadline),
     leaderId,
     createdBy,
-    userIds: Array.from(new Set([...(leaderId ? [leaderId] : []), ...readStringArray(data.userIds)])),
+    userIds: Array.from(new Set(readStringArray(data.userIds))),
   };
 }
 
@@ -152,7 +152,7 @@ export async function updateProject(projectId: string, update: ProjectMemberUpda
 
 export async function addProject(project: NewProject, createdBy: string) {
   const leaderId = project.leaderId || createdBy;
-  const userIds = Array.from(new Set([leaderId, ...project.userIds]));
+  const userIds = Array.from(new Set(project.userIds));
   const projectRef = await addDoc(collection(db, "projects"), {
     ...project,
     leaderId,

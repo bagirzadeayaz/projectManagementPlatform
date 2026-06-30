@@ -5202,3 +5202,918 @@ a {
   max-width: 100%;
   white-space: normal;
 }
+
+/* Cohesive product polish layer */
+html {
+  background: var(--app-bg);
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-surface-subtle) 80%, transparent), var(--app-bg) 340px),
+    var(--app-bg);
+}
+
+::selection {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+}
+
+.projects-page {
+  max-width: 1280px;
+  padding: 36px 28px 64px;
+}
+
+.projects-header {
+  align-items: center;
+  border-bottom: 0;
+  margin-bottom: 28px;
+  padding: 2px 0 22px;
+  position: relative;
+}
+
+.projects-header::after {
+  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-border) 60%, transparent));
+  border-radius: 999px;
+  bottom: 0;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  width: min(100%, 560px);
+}
+
+.projects-header h1 {
+  max-width: 860px;
+}
+
+.projects-subtitle {
+  color: var(--app-text-muted);
+  line-height: 1.55;
+}
+
+.projects-userbar {
+  background: color-mix(in srgb, var(--app-surface) 86%, transparent);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow-sm);
+  padding: 8px;
+}
+
+.app-sidebar {
+  backdrop-filter: blur(18px);
+  border-color: color-mix(in srgb, var(--app-border) 82%, transparent);
+  padding: 16px;
+}
+
+.app-sidebar-brand {
+  padding: 6px 6px 16px;
+}
+
+.app-sidebar-brand strong {
+  font-size: 0.98rem;
+}
+
+.app-sidebar-nav {
+  gap: 7px;
+  padding: 16px 0;
+}
+
+.app-sidebar-link {
+  font-weight: 760;
+  isolation: isolate;
+}
+
+.app-sidebar-link:hover,
+.app-sidebar-link:focus-visible {
+  transform: translateX(4px);
+}
+
+.app-sidebar-link-active {
+  box-shadow: inset 0 0 0 1px var(--app-accent-border), 0 12px 26px rgb(180 35 24 / 9%);
+}
+
+.app-sidebar-account {
+  gap: 10px;
+}
+
+.app-sidebar-user {
+  background: color-mix(in srgb, var(--app-surface) 78%, transparent);
+}
+
+.app-sidebar-avatar {
+  box-shadow: inset 0 0 0 2px var(--app-surface);
+}
+
+.dashboard-control-panel,
+.admin-project-create-card,
+.project-detail-panel,
+.personalization-form,
+.project-team-panel,
+.project-tasks-panel,
+.project-notes-panel,
+.admin-user-shell,
+.admin-panel {
+  border-color: color-mix(in srgb, var(--app-border) 88%, transparent);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 14px 32px rgb(15 23 42 / 5%);
+}
+
+[data-theme="dark"] .dashboard-control-panel,
+[data-theme="dark"] .admin-project-create-card,
+[data-theme="dark"] .project-detail-panel,
+[data-theme="dark"] .personalization-form,
+[data-theme="dark"] .project-team-panel,
+[data-theme="dark"] .project-tasks-panel,
+[data-theme="dark"] .project-notes-panel,
+[data-theme="dark"] .admin-user-shell,
+[data-theme="dark"] .admin-panel {
+  box-shadow: 0 18px 44px rgb(0 0 0 / 22%);
+}
+
+.dashboard-control-panel {
+  gap: 14px;
+  padding: 18px;
+}
+
+.project-toolbar {
+  min-height: 38px;
+}
+
+.project-toolbar p {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  color: var(--app-text-muted);
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 760;
+  min-height: 32px;
+  padding: 6px 12px;
+}
+
+.project-filters {
+  grid-template-columns: minmax(260px, 1.25fr) repeat(2, minmax(160px, 220px));
+}
+
+.projects-grid {
+  align-items: stretch;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.project-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 94%, transparent), var(--app-surface)),
+    var(--app-surface);
+  border-color: color-mix(in srgb, var(--app-border) 90%, transparent);
+}
+
+.project-card-link:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+  box-shadow: 0 18px 34px rgb(15 23 42 / 10%);
+}
+
+[data-theme="dark"] .project-card-link:hover {
+  box-shadow: 0 18px 36px rgb(0 0 0 / 28%);
+}
+
+.project-card .ui-card-title,
+.project-task-item h3,
+.task-board-card h3 {
+  letter-spacing: 0;
+}
+
+.project-card-footer {
+  color: var(--app-text-muted);
+}
+
+.project-open-text {
+  color: var(--app-accent-strong);
+  font-weight: 800;
+}
+
+.admin-project-create-card {
+  background:
+    linear-gradient(135deg, var(--app-accent-soft), color-mix(in srgb, var(--app-surface) 94%, transparent) 48%, var(--app-surface)),
+    var(--app-surface);
+  padding: 22px;
+}
+
+.admin-project-create-button {
+  min-height: 58px;
+}
+
+.admin-statistics {
+  display: grid;
+  gap: 18px;
+}
+
+.admin-statistics-heading,
+.admin-visual-card,
+.dashboard-stat {
+  border-color: var(--app-border);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.admin-visual-card:hover,
+.dashboard-stat:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+  transform: translateY(-1px);
+}
+
+.task-board {
+  gap: 14px;
+}
+
+.task-board-column {
+  background: color-mix(in srgb, var(--app-surface-muted) 72%, transparent);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 10px;
+}
+
+.task-board-column header {
+  padding: 2px 2px 8px;
+}
+
+.task-board-card {
+  border-color: color-mix(in srgb, var(--app-border) 84%, transparent);
+}
+
+.task-board-card:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+}
+
+.task-board-card-drag-ready {
+  box-shadow: var(--app-ring), var(--app-shadow-md);
+}
+
+.personalization-form,
+.new-project-form {
+  gap: 18px;
+  padding: 22px;
+}
+
+.new-project-form {
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.new-project-form .project-users-field,
+.new-project-form .ui-field:has(.ui-textarea),
+.new-project-form .auth-message,
+.new-project-form .ui-alert,
+.new-project-form .form-actions,
+.new-project-form > .ui-button {
+  grid-column: 1 / -1;
+}
+
+.project-users-field {
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 16px;
+}
+
+.project-users-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.project-user-option,
+.project-member-row,
+.project-task-assignee,
+.task-board-assignee {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.project-user-option:hover,
+.project-member-row:hover {
+  background: var(--app-surface);
+  border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+}
+
+.project-record-grid {
+  background: var(--app-surface);
+}
+
+.project-record-aside {
+  background: var(--app-surface-subtle);
+}
+
+.project-section-heading {
+  gap: 14px;
+}
+
+.project-task-list,
+.project-member-list {
+  gap: 10px;
+}
+
+.project-task-item {
+  border-color: var(--app-border);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.project-task-item:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
+  box-shadow: var(--app-shadow-sm);
+  transform: translateY(-1px);
+}
+
+.profile-picture-row {
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 16px;
+}
+
+.profile-picture-preview {
+  box-shadow: inset 0 0 0 4px var(--app-surface), 0 12px 28px rgb(15 23 42 / 10%);
+}
+
+.ui-dialog-content {
+  box-shadow: 0 24px 72px rgb(15 23 42 / 24%);
+}
+
+[data-theme="dark"] .ui-dialog-content {
+  box-shadow: 0 24px 72px rgb(0 0 0 / 46%);
+}
+
+.empty-state {
+  background: color-mix(in srgb, var(--app-surface) 78%, transparent);
+  border: 1px dashed var(--app-border-strong);
+  border-radius: var(--app-radius);
+  color: var(--app-text-muted);
+  padding: 24px;
+}
+
+@media (max-width: 1120px) {
+  .new-project-form,
+  .project-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .projects-page {
+    padding-top: 28px;
+  }
+
+  .projects-header {
+    margin-bottom: 22px;
+  }
+
+  .projects-userbar {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .app-sidebar {
+    backdrop-filter: blur(18px);
+  }
+}
+
+@media (max-width: 720px) {
+  .new-project-form,
+  .project-filters,
+  .project-users-list {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-project-create-card,
+  .project-toolbar {
+    align-items: stretch;
+  }
+
+  .project-toolbar p {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* Screen-specific refinement pass */
+.auth-card {
+  overflow: hidden;
+  position: relative;
+}
+
+.auth-card::before {
+  background: linear-gradient(90deg, var(--app-accent), color-mix(in srgb, var(--app-accent) 18%, transparent));
+  content: "";
+  height: 3px;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.auth-card-content {
+  display: grid;
+  gap: 18px;
+}
+
+.auth-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auth-form {
+  display: grid;
+}
+
+.auth-form > .ui-button[type="submit"] {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.auth-secondary-actions {
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: center;
+  padding-top: 14px;
+}
+
+.auth-secondary-actions .ui-button-link {
+  min-height: 28px;
+}
+
+.auth-card-signed-in .ui-card-content {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.admin-statistics-heading {
+  align-items: center;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--app-surface) 94%, transparent), var(--app-surface-subtle));
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 18px;
+}
+
+.admin-statistics-heading h2,
+.admin-visual-card h3,
+.project-section-heading h2 {
+  color: var(--app-text);
+  letter-spacing: 0;
+}
+
+.admin-statistics-subtabs {
+  justify-self: start;
+  min-width: min(100%, 360px);
+}
+
+.dashboard-stat {
+  overflow: hidden;
+  padding: 16px;
+  position: relative;
+}
+
+.dashboard-stat::after {
+  background: var(--app-accent);
+  border-radius: 999px;
+  bottom: 12px;
+  content: "";
+  height: 3px;
+  left: 16px;
+  opacity: 0.22;
+  position: absolute;
+  width: 38px;
+}
+
+.dashboard-stat strong {
+  font-size: clamp(1.55rem, 4vw, 2.1rem);
+  letter-spacing: 0;
+}
+
+.admin-visual-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.stat-bar-row {
+  gap: 8px;
+}
+
+.stat-bar-label {
+  color: var(--app-text-muted);
+}
+
+.stat-bar-label span {
+  color: var(--app-text);
+  font-weight: 760;
+}
+
+.deadline-health-item,
+.team-load-grid > div {
+  border-radius: var(--app-radius);
+  min-width: 0;
+}
+
+.project-detail-panel {
+  overflow: hidden;
+}
+
+.project-record-main,
+.project-record-aside,
+.project-team-panel,
+.project-tasks-panel,
+.project-notes-panel {
+  padding: 20px;
+}
+
+.project-detail-description {
+  color: var(--app-text);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.project-detail-meta {
+  gap: 10px;
+}
+
+.project-detail-meta div {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 12px;
+}
+
+.project-detail-meta span {
+  color: var(--app-text-muted);
+  font-size: 0.76rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.project-detail-meta strong {
+  color: var(--app-text);
+  display: block;
+  margin-top: 4px;
+}
+
+.project-member-row,
+.project-note-item,
+.project-task-item {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  padding: 12px;
+}
+
+.project-note-form {
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.project-note-form-footer,
+.project-note-item-footer {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.project-note-form-actions,
+.project-task-card-actions,
+.project-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-task-item-header {
+  align-items: start;
+}
+
+.project-task-item-actions {
+  align-items: end;
+}
+
+.project-task-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.personalization-form .ui-field,
+.new-project-form .ui-field,
+.project-task-form .ui-field {
+  min-width: 0;
+}
+
+.field-label-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.inline-ai-button {
+  flex: 0 0 auto;
+}
+
+.char-count {
+  color: var(--app-text-muted);
+  font-size: 0.78rem;
+  font-weight: 760;
+  justify-self: end;
+}
+
+.project-users-search {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.project-user-option {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  min-height: 58px;
+  padding: 10px;
+}
+
+.admin-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+
+.admin-user-row-shell {
+  align-items: center;
+}
+
+.admin-user-row {
+  background: var(--app-surface);
+}
+
+.admin-user-row-actions {
+  justify-content: flex-end;
+}
+
+.admin-user-profile-card,
+.admin-user-project-panel {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.admin-user-data-grid div {
+  background: var(--app-surface-subtle);
+}
+
+.ui-dialog-backdrop {
+  backdrop-filter: blur(8px);
+}
+
+.ui-dialog-content {
+  max-height: min(86vh, 760px);
+  overflow: auto;
+}
+
+.ui-dialog-footer {
+  border-top: 1px solid var(--app-border);
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .projects-header,
+  .dashboard-control-panel,
+  .admin-project-create-card,
+  .project-card,
+  .admin-visual-card,
+  .dashboard-stat,
+  .personalization-form,
+  .project-detail-panel {
+    animation: app-surface-in 360ms ease both;
+  }
+
+  .project-card:nth-child(2n),
+  .admin-visual-card:nth-child(2n),
+  .dashboard-stat:nth-child(2n) {
+    animation-delay: 35ms;
+  }
+
+  .project-card:nth-child(3n),
+  .admin-visual-card:nth-child(3n),
+  .dashboard-stat:nth-child(3n) {
+    animation-delay: 70ms;
+  }
+}
+
+@keyframes app-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-statistics-heading,
+  .project-note-form-footer,
+  .project-note-item-footer {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .auth-card-signed-in .ui-card-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    box-shadow: none;
+  }
+
+  .project-record-main,
+  .project-record-aside,
+  .project-team-panel,
+  .project-tasks-panel,
+  .project-notes-panel {
+    padding: 16px;
+  }
+
+  .field-label-row,
+  .project-task-item-header,
+  .project-task-item-actions,
+  .project-section-actions,
+  .admin-user-row-actions {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .inline-ai-button {
+    width: 100%;
+  }
+}
+
+/* Admin user modal polish */
+.ui-dialog-backdrop {
+  background:
+    radial-gradient(circle at 50% 20%, rgb(255 255 255 / 10%), transparent 34%),
+    rgb(9 9 11 / 52%);
+  backdrop-filter: blur(14px) saturate(118%);
+  -webkit-backdrop-filter: blur(14px) saturate(118%);
+}
+
+[data-theme="dark"] .ui-dialog-backdrop {
+  background:
+    radial-gradient(circle at 50% 16%, rgb(248 113 113 / 10%), transparent 36%),
+    rgb(0 0 0 / 62%);
+}
+
+.admin-user-dialog,
+.admin-user-edit-dialog {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--app-surface) 98%, transparent), var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--app-border) 86%, transparent);
+  box-shadow:
+    0 30px 90px rgb(15 23 42 / 30%),
+    0 0 0 1px rgb(255 255 255 / 58%) inset;
+}
+
+[data-theme="dark"] .admin-user-dialog,
+[data-theme="dark"] .admin-user-edit-dialog {
+  box-shadow:
+    0 30px 90px rgb(0 0 0 / 56%),
+    0 0 0 1px rgb(255 255 255 / 5%) inset;
+}
+
+.admin-user-dialog .ui-dialog-header,
+.admin-user-edit-dialog .ui-dialog-header {
+  border-bottom: 1px solid var(--app-border);
+  padding-bottom: 14px;
+}
+
+.admin-user-dialog .admin-user-profile-card,
+.admin-user-dialog .admin-user-project-panel,
+.admin-user-edit-dialog .admin-user-edit-grid {
+  background: color-mix(in srgb, var(--app-surface-subtle) 72%, var(--app-surface));
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+}
+
+.admin-user-edit-dialog .admin-user-edit-grid {
+  padding: 14px;
+}
+
+.admin-user-dialog .admin-user-profile-card,
+.admin-user-dialog .admin-user-project-panel {
+  box-shadow: none;
+}
+
+@media (max-width: 640px) {
+  .admin-user-dialog,
+  .admin-user-edit-dialog {
+    max-height: calc(100vh - 20px);
+    width: min(calc(100vw - 20px), 100%);
+  }
+}
+
+/* Prevent sidebar hover/focus states from sticking after click or tap. */
+.app-sidebar-link:focus:not(:focus-visible):not(.app-sidebar-link-active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--app-text-muted);
+  transform: none;
+}
+
+.app-sidebar-user:focus:not(:focus-visible):not(.app-sidebar-user-active) {
+  background: color-mix(in srgb, var(--app-surface) 78%, transparent);
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+@media (hover: none) {
+  .app-sidebar-link:hover:not(.app-sidebar-link-active) {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    color: var(--app-text-muted);
+    transform: none;
+  }
+
+  .app-sidebar-user:hover:not(.app-sidebar-user-active) {
+    background: color-mix(in srgb, var(--app-surface) 78%, transparent);
+    border-color: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+/* Statistics segmented control: equal, centered, and translation-safe. */
+.admin-statistics-subtabs {
+  align-items: stretch;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  padding: 6px;
+  width: min(100%, 448px);
+}
+
+.admin-statistics-subtabs button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1.2;
+  min-height: 46px;
+  min-width: 0;
+  padding: 8px 14px;
+  text-align: center;
+  white-space: normal;
+  word-break: normal;
+}
+
+.admin-statistics-subtabs button[aria-selected="true"] {
+  border: 1px solid var(--app-accent-border);
+  box-shadow: 0 8px 18px rgb(15 23 42 / 7%);
+}
+
+@media (max-width: 520px) {
+  .admin-statistics-subtabs {
+    width: 100%;
+  }
+
+  .admin-statistics-subtabs button {
+    font-size: 0.84rem;
+    padding-inline: 10px;
+  }
+}

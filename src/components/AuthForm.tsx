@@ -116,10 +116,10 @@ export function AuthForm() {
           <h1>{user.name || t("welcome")}</h1>
           <p className="auth-muted">{user.email}</p>
         </CardHeader>
-        <CardContent>
-          <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} type="button" variant="secondary">
-            {busy ? t("logoutBusy") : t("logout")}
-          </Button>
+      <CardContent>
+        <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} type="button" variant="secondary">
+          {busy ? t("logoutBusy") : t("logout")}
+        </Button>
           <Button onClick={() => router.push(getHomePath(user.role))} type="button">
             {t("openProjects")}
           </Button>
@@ -136,7 +136,7 @@ export function AuthForm() {
 
   return (
     <Card className="auth-card">
-      <CardContent>
+      <CardContent className="auth-card-content">
 
         <div className="autoAuthAdmin" aria-hidden="true" />
 
@@ -216,6 +216,7 @@ export function AuthForm() {
           </Button>
         </form>
 
+        <div className="auth-secondary-actions">
         {!isRegistering ? (
           <>
             <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
@@ -230,6 +231,7 @@ export function AuthForm() {
             {t("resendVerificationEmail")}
           </Button>
         )}
+        </div>
       </CardContent>
     </Card>
   );

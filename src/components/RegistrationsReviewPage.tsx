@@ -103,8 +103,13 @@ function ActiveUsersPanel({
         (tasksByProjectId[project.id] ?? []).some((task) => task.userIds.includes(selectedUser.uid)),
       )
     : [];
-  const canChangeEditingUserRole = Boolean(
+  const canAssignSuperAdminRole = Boolean(
     editingUser && isCurrentUserSuperAdmin && editingUser.uid !== currentUserId,
+  );
+  const canChangeEditingUserRole = Boolean(
+    editingUser &&
+    editingUser.uid !== currentUserId &&
+    (isCurrentUserSuperAdmin || !isSuperAdminRole(editingUser.role)),
   );
 
   useEffect(() => {
@@ -138,7 +143,15 @@ function ActiveUsersPanel({
     };
 
     if (canChangeEditingUserRole) {
-      update.role = editRole;
+      const nextRole = normalizeRole(editRole);
+
+      if (nextRole === superAdminRole && !canAssignSuperAdminRole) {
+        setEditError(t("notAllowedManageUsers"));
+        setSavingUserId(null);
+        return;
+      }
+
+      update.role = nextRole;
     }
 
     try {
@@ -379,7 +392,7 @@ function ActiveUsersPanel({
                 >
                   <option value={userRole}>{getRoleLabel(userRole, language)}</option>
                   <option value={adminRole}>{getRoleLabel(adminRole, language)}</option>
-                  {canChangeEditingUserRole || normalizeRole(editingUser.role) === superAdminRole ? (
+                  {canAssignSuperAdminRole || normalizeRole(editingUser.role) === superAdminRole ? (
                     <option value={superAdminRole}>{getRoleLabel(superAdminRole, language)}</option>
                   ) : null}
                 </Select>

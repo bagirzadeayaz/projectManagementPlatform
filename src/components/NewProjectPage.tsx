@@ -50,6 +50,7 @@ export function NewProjectPage() {
   const minimumDeadline = getTodayDateInputValue();
   const assignableUsers = users.filter(isAssignableUser);
   const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
+  const projectLeaderUserIds = new Set(users.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
     ? assignableUsers.filter((projectUser) =>
@@ -57,16 +58,13 @@ export function NewProjectPage() {
       )
     : assignableUsers;
   const selectedUserIds = userIds.filter((selectedUserId) => assignableUserIds.has(selectedUserId));
-  const selectedParticipantUsers = selectedUserIds
-    .map((selectedUserId) => assignableUsers.find((projectUser) => projectUser.uid === selectedUserId))
-    .filter((projectUser): projectUser is (typeof assignableUsers)[number] => Boolean(projectUser));
   const canCreateProject = user ? isAdminRole(user.role) : false;
 
   useEffect(() => {
-    if (leaderId && (!selectedUserIds.includes(leaderId) || !assignableUserIds.has(leaderId))) {
+    if (leaderId && !users.some((projectUser) => projectUser.uid === leaderId)) {
       setLeaderId("");
     }
-  }, [assignableUserIds, leaderId, selectedUserIds]);
+  }, [leaderId, users]);
 
   if (!user) {
     return (
@@ -104,7 +102,7 @@ export function NewProjectPage() {
       return;
     }
 
-    if (!leaderId || !selectedAssignableUserIds.includes(leaderId) || !assignableUserIds.has(leaderId)) {
+    if (!leaderId || !projectLeaderUserIds.has(leaderId)) {
       setUsersSelectionError(t("selectProjectLeader"));
       return;
     }
@@ -227,13 +225,13 @@ export function NewProjectPage() {
         <FieldLabel>
           <span>{t("projectLeader")}</span>
           <Select
-            disabled={selectedParticipantUsers.length === 0}
+            disabled={users.length === 0}
             onChange={(event) => setLeaderId(event.target.value)}
             required
             value={leaderId}
           >
             <option value="">{t("selectProjectLeader")}</option>
-            {selectedParticipantUsers.map((projectUser) => (
+            {users.map((projectUser) => (
               <option key={projectUser.uid} value={projectUser.uid}>
                 {projectUser.name || projectUser.email}
               </option>

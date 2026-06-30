@@ -177,6 +177,9 @@ export function ProjectDetailsPage() {
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
     : assignableUsers;
+  const currentProjectUserIds = new Set(project?.userIds ?? []);
+  const taskAssignableUsers = assignableUsers.filter((projectUser) => currentProjectUserIds.has(projectUser.uid));
+  const taskAssignableUserIds = new Set(taskAssignableUsers.map((projectUser) => projectUser.uid));
   const selectedProjectUsers =
     project?.userIds
       .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
@@ -185,17 +188,16 @@ export function ProjectDetailsPage() {
     .map((projectUserId) => assignableUsers.find((projectUser) => projectUser.uid === projectUserId))
     .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
   const isLeaderInActiveParticipants = activeParticipantUsers.some((projectUser) => projectUser.uid === leaderId);
-  const currentProjectUserIds = new Set(project?.userIds ?? []);
   const visibleNotes = notes.filter((note) => currentProjectUserIds.has(note.userId));
   const ownNote = user ? visibleNotes.find((note) => note.userId === user.uid) : undefined;
   const visibleTasks = canDelete ? tasks : [];
   const canViewProjectContent = canDelete || isProjectLeader || isProjectUser;
   const normalizedTaskEditUserSearch = taskEditUserSearch.trim().toLowerCase();
   const filteredTaskEditUsers = normalizedTaskEditUserSearch
-    ? assignableUsers.filter((projectUser) =>
+    ? taskAssignableUsers.filter((projectUser) =>
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedTaskEditUserSearch),
       )
-    : assignableUsers;
+    : taskAssignableUsers;
   const editingTask = editingTaskId ? tasks.find((task) => task.id === editingTaskId) : undefined;
 
   useEffect(() => {
@@ -528,7 +530,7 @@ export function ProjectDetailsPage() {
     setTaskEditDescription(task.description);
     setTaskEditStatus(TASK_STATUSES.includes(task.status as (typeof TASK_STATUSES)[number]) ? task.status : "active");
     setTaskEditDeadline(task.deadline);
-    setTaskEditUserIds(task.userIds.filter((taskUserId) => assignableUserIds.has(taskUserId)));
+    setTaskEditUserIds(task.userIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId)));
     setTaskEditUserSearch("");
   };
 
@@ -544,7 +546,7 @@ export function ProjectDetailsPage() {
   };
 
   const toggleTaskEditUser = (selectedUserId: string) => {
-    if (!assignableUserIds.has(selectedUserId)) {
+    if (!taskAssignableUserIds.has(selectedUserId)) {
       return;
     }
 
@@ -573,7 +575,7 @@ export function ProjectDetailsPage() {
       return;
     }
 
-    const selectedAssignableUserIds = taskEditUserIds.filter((taskUserId) => assignableUserIds.has(taskUserId));
+    const selectedAssignableUserIds = taskEditUserIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId));
 
     if (selectedAssignableUserIds.length === 0) {
       setTaskError(t("selectTaskUser"));
@@ -592,22 +594,6 @@ export function ProjectDetailsPage() {
       };
 
       await updateProjectTask(project.id, task.id, update);
-      const nextProjectUserIds = Array.from(new Set([...project.userIds.filter((projectUserId) => assignableUserIds.has(projectUserId)), ...selectedAssignableUserIds]));
-
-      if (nextProjectUserIds.length !== project.userIds.length) {
-        const projectUpdate = {
-          name: project.name,
-          description: project.description,
-          status: project.status,
-          deadline: project.deadline,
-          leaderId: project.leaderId,
-          userIds: nextProjectUserIds,
-        };
-
-        await updateProject(project.id, projectUpdate);
-        setProject({ ...project, ...projectUpdate });
-        setUserIds(nextProjectUserIds);
-      }
 
       setTasks((currentTasks) =>
         currentTasks.map((currentTask) =>

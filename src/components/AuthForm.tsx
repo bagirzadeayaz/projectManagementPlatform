@@ -19,7 +19,7 @@ type AuthMode = "login" | "register";
 
 export function AuthForm() {
   const router = useRouter();
-  const { user, busy, error, language, setLanguage, t, clearError, login, register, sendResetEmail, signOut } = useAuth();
+  const { user, busy, error, language, setLanguage, t, clearError, login, register, resendVerificationEmail, sendResetEmail, signOut } = useAuth();
   const [mode, setMode] = useState<AuthMode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -73,6 +73,25 @@ export function AuthForm() {
     try {
       await sendResetEmail(email.trim());
       setNotice(t("passwordResetSent"));
+    } catch {
+      // The hook already formats and stores the visible error.
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email.trim()) {
+      setNotice(t("enterEmailFirst"));
+      return;
+    }
+
+    if (!password) {
+      setNotice(t("enterPasswordFirst"));
+      return;
+    }
+
+    try {
+      await resendVerificationEmail({ email: email.trim(), password, name: name.trim() });
+      setNotice(t("verificationEmailResent"));
     } catch {
       // The hook already formats and stores the visible error.
     }
@@ -194,10 +213,19 @@ export function AuthForm() {
         </form>
 
         {!isRegistering ? (
-          <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
-            {t("forgotPassword")}
+          <>
+            <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
+              {t("forgotPassword")}
+            </Button>
+            <Button className="auth-link-button" disabled={busy} onClick={handleResendVerification} type="button" variant="link">
+              {t("resendVerificationEmail")}
+            </Button>
+          </>
+        ) : (
+          <Button className="auth-link-button" disabled={busy} onClick={handleResendVerification} type="button" variant="link">
+            {t("resendVerificationEmail")}
           </Button>
-        ) : null}
+        )}
       </CardContent>
     </Card>
   );

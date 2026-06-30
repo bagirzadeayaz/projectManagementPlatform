@@ -251,6 +251,36 @@ export async function resetPassword(email: string) {
   return sendPasswordResetEmail(auth, email);
 }
 
+export async function resendEmailVerification({ email, password }: AuthCredentials, language: Language = "en") {
+  await useMemoryAuthPersistence();
+
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  const user = credential.user;
+  await user.reload();
+
+  if (user.emailVerified) {
+    const profile = await findUserProfile(user.uid, user.email ?? email);
+
+    if (profile && (profile.status === emailUnverifiedStatus || profile.status === "pending")) {
+      await updateDoc(doc(db, "users", profile.docId), {
+        status: "approved",
+        emailVerified: true,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await signOut(auth);
+    throw new Error(
+      language === "az"
+        ? "E-poçt artıq təsdiqlənib. Hesaba daxil ola bilərsiniz."
+        : "Email is already verified. You can sign in now.",
+    );
+  }
+
+  await sendEmailVerification(user);
+  await signOut(auth);
+}
+
 export async function updateUserPersonalization(
   user: DbUser,
   update: {

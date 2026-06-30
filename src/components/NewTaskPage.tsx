@@ -13,7 +13,6 @@ import {
   getTodayDateInputValue,
   isPastDeadline,
   TASK_STATUSES,
-  updateProject,
   type Project,
 } from "../services/project.service";
 import { getProjectStatusLabel } from "../utils/labels";
@@ -60,13 +59,15 @@ export function NewTaskPage() {
   const minimumDeadline = getTodayDateInputValue();
   const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
   const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
-  const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
+  const projectUserIdSet = new Set(project?.userIds ?? []);
+  const taskAssignableUsers = assignableUsers.filter((projectUser) => projectUserIdSet.has(projectUser.uid));
+  const taskAssignableUserIds = new Set(taskAssignableUsers.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
-    ? assignableUsers.filter((projectUser) =>
+    ? taskAssignableUsers.filter((projectUser) =>
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
-    : assignableUsers;
+    : taskAssignableUsers;
 
   useEffect(() => {
     if (!user || !canCreateTask || !projectId) {
@@ -112,7 +113,7 @@ export function NewTaskPage() {
   }, [canCreateTask, projectId, t, user]);
 
   const toggleTaskUser = (selectedUserId: string) => {
-    if (!assignableUserIds.has(selectedUserId)) {
+    if (!taskAssignableUserIds.has(selectedUserId)) {
       return;
     }
 
@@ -157,7 +158,7 @@ export function NewTaskPage() {
       return;
     }
 
-    const selectedAssignableUserIds = taskUserIds.filter((taskUserId) => assignableUserIds.has(taskUserId));
+    const selectedAssignableUserIds = taskUserIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId));
 
     if (selectedAssignableUserIds.length === 0) {
       setError(t("selectTaskUser"));
@@ -175,19 +176,6 @@ export function NewTaskPage() {
         userIds: selectedAssignableUserIds,
         createdBy: user.uid,
       });
-
-      const nextProjectUserIds = Array.from(new Set([...project.userIds.filter((projectUserId) => assignableUserIds.has(projectUserId)), ...selectedAssignableUserIds]));
-
-      if (nextProjectUserIds.length !== project.userIds.length) {
-        await updateProject(project.id, {
-          name: project.name,
-          description: project.description,
-          status: project.status,
-          deadline: project.deadline,
-          leaderId: project.leaderId,
-          userIds: nextProjectUserIds,
-        });
-      }
 
       router.push(`/projects/${project.id}`);
     } catch (taskError) {
@@ -289,8 +277,8 @@ export function NewTaskPage() {
               />
             </label>
             {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
-            {!usersLoading && assignableUsers.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
-            {!usersLoading && assignableUsers.length > 0 && filteredUsers.length === 0 ? (
+            {!usersLoading && taskAssignableUsers.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+            {!usersLoading && taskAssignableUsers.length > 0 && filteredUsers.length === 0 ? (
               <p className="project-users-note">{t("noMatchingUsers")}</p>
             ) : null}
             <div className="project-users-list">

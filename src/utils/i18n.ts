@@ -75,6 +75,7 @@ export const translations = {
     editUser: "Edit user",
     editingProject: "Editing project",
     enterEmailFirst: "Enter your email first.",
+    enterPasswordFirst: "Enter your password first.",
     forgotPassword: "Reset password",
     generating: "Generating...",
     generateWithAi: "Generate with AI",
@@ -135,6 +136,7 @@ export const translations = {
     notes: "Notes",
     notesLoadFailed: "Could not load notes.",
     passwordResetSent: "Password reset email sent.",
+    verificationEmailResent: "Verification email sent. Check your inbox for the new link.",
     photoDeleted: "Profile photo deleted.",
     photoDeleteFailed: "Could not delete the profile photo.",
     photoPreview: "Profile preview",
@@ -166,6 +168,7 @@ export const translations = {
     refresh: "Refresh",
     refreshing: "Refreshing...",
     register: "Register",
+    resendVerificationEmail: "Resend verification email",
     role: "Role",
     save: "Save",
     saveProfile: "Save profile",
@@ -458,6 +461,9 @@ export const translations = {
     plannedTasks: "Planlasdirilmis tapshiriqlar",
     totalTasks: "Umumi tapshiriqlar",
     unassignedTasks: "Teyin edilmeyen tapshiriqlar",
+    enterPasswordFirst: "Evvelce shifrenizi daxil edin.",
+    resendVerificationEmail: "Tesdiq e-poctunu yeniden gonder",
+    verificationEmailResent: "Tesdiq e-poctu gonderildi. Yeni link ucun gelenler qutunuzu yoxlayin.",
   },
 } as const;
 

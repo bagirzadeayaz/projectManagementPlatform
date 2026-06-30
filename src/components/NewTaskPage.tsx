@@ -1,0 +1,320 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+
+import { useAuth } from "../hooks/useAuth";
+import { useProjectUsers } from "../hooks/useProjectUsers";
+import {
+  addProjectTask,
+  generateTaskDescription,
+  getProject,
+  getTodayDateInputValue,
+  isPastDeadline,
+  TASK_STATUSES,
+  updateProject,
+  type Project,
+} from "../services/project.service";
+import { getProjectStatusLabel } from "../utils/labels";
+import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
+import { PageHeader } from "./AppShell";
+import { AuthForm } from "./AuthForm";
+import { Alert } from "./ui/alert";
+import { Button, buttonVariants } from "./ui/button";
+import { Card } from "./ui/card";
+import { Checkbox } from "./ui/checkbox";
+import { FieldLabel } from "./ui/field";
+import { Input } from "./ui/input";
+import { Select } from "./ui/select";
+import { Textarea } from "./ui/textarea";
+
+function canManageProjects(role: string) {
+  return isAdminRole(role);
+}
+
+function isAssignableUser(projectUser: { role: string }) {
+  return isAssignableRole(projectUser.role);
+}
+
+export function NewTaskPage() {
+  const params = useParams<{ projectId?: string | string[] }>();
+  const router = useRouter();
+  const { user, language, t } = useAuth();
+  const projectId = Array.isArray(params.projectId) ? params.projectId[0] : params.projectId;
+  const canCreateTask = user ? canManageProjects(user.role) : false;
+  const { users, loading: usersLoading, error: usersError } = useProjectUsers(Boolean(user && canCreateTask));
+  const [project, setProject] = useState<Project | null>(null);
+  const [loadingProject, setLoadingProject] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [title, setTitle] = useState("");
+  const [descriptionMessage, setDescriptionMessage] = useState("");
+  const [description, setDescription] = useState("");
+  const [status, setStatus] = useState("planned");
+  const [deadline, setDeadline] = useState("");
+  const [taskUserIds, setTaskUserIds] = useState<string[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const minimumDeadline = getTodayDateInputValue();
+  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
+  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
+  const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
+  const normalizedUserSearch = userSearch.trim().toLowerCase();
+  const filteredUsers = normalizedUserSearch
+    ? assignableUsers.filter((projectUser) =>
+        `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
+      )
+    : assignableUsers;
+
+  useEffect(() => {
+    if (!user || !canCreateTask || !projectId) {
+      return;
+    }
+
+    let active = true;
+
+    const loadProject = async () => {
+      setLoadingProject(true);
+      setError(null);
+
+      try {
+        const loadedProject = await getProject(projectId);
+
+        if (!active) {
+          return;
+        }
+
+        if (!loadedProject) {
+          setProject(null);
+          setError(t("projectMissing"));
+          return;
+        }
+
+        setProject(loadedProject);
+      } catch (projectError) {
+        if (active) {
+          setError(projectError instanceof Error ? projectError.message : t("projectLoadFailed"));
+        }
+      } finally {
+        if (active) {
+          setLoadingProject(false);
+        }
+      }
+    };
+
+    void loadProject();
+
+    return () => {
+      active = false;
+    };
+  }, [canCreateTask, projectId, t, user]);
+
+  const toggleTaskUser = (selectedUserId: string) => {
+    if (!assignableUserIds.has(selectedUserId)) {
+      return;
+    }
+
+    setError(null);
+    setTaskUserIds((currentTaskUserIds) =>
+      currentTaskUserIds.includes(selectedUserId)
+        ? currentTaskUserIds.filter((currentUserId) => currentUserId !== selectedUserId)
+        : [...currentTaskUserIds, selectedUserId],
+    );
+  };
+
+  const handleGenerateDescription = async () => {
+    setGenerating(true);
+    setGenerationError(null);
+
+    try {
+      const generatedDescription = await generateTaskDescription(title, descriptionMessage, project?.name ?? "", language);
+      setDescription(generatedDescription);
+    } catch (descriptionError) {
+      setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!project || !user || !canCreateTask) {
+      return;
+    }
+
+    setError(null);
+
+    if (!title.trim()) {
+      setError(t("taskTitleRequired"));
+      return;
+    }
+
+    if (deadline && isPastDeadline(deadline)) {
+      setError(t("deadlineCannotBePast"));
+      return;
+    }
+
+    const selectedAssignableUserIds = taskUserIds.filter((taskUserId) => assignableUserIds.has(taskUserId));
+
+    if (selectedAssignableUserIds.length === 0) {
+      setError(t("selectTaskUser"));
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await addProjectTask(project.id, {
+        title: title.trim(),
+        description: description.trim(),
+        status,
+        deadline,
+        userIds: selectedAssignableUserIds,
+        createdBy: user.uid,
+      });
+
+      const nextProjectUserIds = Array.from(new Set([...project.userIds.filter((projectUserId) => assignableUserIds.has(projectUserId)), ...selectedAssignableUserIds]));
+
+      if (nextProjectUserIds.length !== project.userIds.length) {
+        await updateProject(project.id, {
+          name: project.name,
+          description: project.description,
+          status: project.status,
+          deadline: project.deadline,
+          leaderId: project.leaderId,
+          userIds: nextProjectUserIds,
+        });
+      }
+
+      router.push(`/projects/${project.id}`);
+    } catch (taskError) {
+      setError(taskError instanceof Error ? taskError.message : t("taskCreateFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <main className="auth-page">
+        <AuthForm />
+      </main>
+    );
+  }
+
+  if (!canCreateTask) {
+    return (
+      <main className="projects-page personalization-page">
+        <section className="empty-state">{t("notAllowedCreateTasks")}</section>
+        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+          {t("backToProjects")}
+        </Link>
+      </main>
+    );
+  }
+
+  return (
+    <main className="projects-page personalization-page">
+      <PageHeader
+        actions={
+          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href={project ? `/projects/${project.id}` : "/projects"}>
+            {project ? t("projectDetails") : t("projects")}
+          </Link>
+        }
+        eyebrow={t("projectTasks")}
+        subtitle={project?.name || t("loadingProject")}
+        title={t("createTask")}
+      />
+
+      {loadingProject ? <section className="empty-state">{t("loadingProject")}</section> : null}
+
+      {project ? (
+        <Card className="personalization-form new-project-form project-task-form" as="form" onSubmit={handleSubmit}>
+          <div className="project-task-form-grid">
+            <FieldLabel>
+              <span>{t("taskTitle")}</span>
+              <Input onChange={(event) => setTitle(event.target.value)} required type="text" value={title} />
+            </FieldLabel>
+            <FieldLabel>
+              <span>{t("status")}</span>
+              <Select className={`status-select status-select-${status}`} onChange={(event) => setStatus(event.target.value)} value={status}>
+                {TASK_STATUSES.map((projectStatus) => (
+                  <option key={projectStatus} value={projectStatus}>
+                    {getProjectStatusLabel(projectStatus, language)}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
+              <span>{t("deadline")}</span>
+              <Input min={minimumDeadline} onChange={(event) => setDeadline(event.target.value)} type="date" value={deadline} required/>
+            </FieldLabel>
+          </div>
+
+          <FieldLabel>
+            <span>{t("descriptionAiMessage")}</span>
+            <Textarea
+              maxLength={1000}
+              onChange={(event) => setDescriptionMessage(event.target.value)}
+              placeholder={t("descriptionAiPlaceholder")}
+              rows={4}
+              value={descriptionMessage}
+            />
+            <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
+          </FieldLabel>
+
+          <FieldLabel>
+            <span className="field-label-row">
+              {t("description")}
+              <Button className="inline-ai-button" disabled={generating || !title.trim()} onClick={handleGenerateDescription} size="sm" type="button" variant="secondary">
+                {generating ? t("generating") : t("generateWithAi")}
+              </Button>
+            </span>
+            <Textarea maxLength={500} onChange={(event) => setDescription(event.target.value)} rows={5} value={description} />
+            <div className="char-count">{`${description.length}/500`}</div>
+          </FieldLabel>
+
+          <fieldset className="project-users-field">
+            <legend>{t("taskParticipants")}</legend>
+            <label className="project-users-search">
+              <span>{t("searchUsers")}</span>
+              <Input
+                onChange={(event) => setUserSearch(event.target.value)}
+                placeholder={t("searchUsersPlaceholder")}
+                type="search"
+                value={userSearch}
+              />
+            </label>
+            {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
+            {!usersLoading && assignableUsers.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+            {!usersLoading && assignableUsers.length > 0 && filteredUsers.length === 0 ? (
+              <p className="project-users-note">{t("noMatchingUsers")}</p>
+            ) : null}
+            <div className="project-users-list">
+              {filteredUsers.map((projectUser) => (
+                <label className="project-user-option" key={projectUser.uid}>
+                  <Checkbox checked={taskUserIds.includes(projectUser.uid)} onChange={() => toggleTaskUser(projectUser.uid)} />
+                  <span>{projectUser.name || projectUser.email}</span>
+                  <small>{projectUser.email}</small>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          {generationError ? <Alert variant="destructive">{generationError}</Alert> : null}
+          {error ? <Alert variant="destructive">{error}</Alert> : null}
+          {usersError ? <Alert variant="destructive">{usersError}</Alert> : null}
+
+          <div className="project-task-form-footer">
+            <Button disabled={saving} type="submit">
+              {saving ? t("creatingTask") : t("createTask")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+    </main>
+  );
+}

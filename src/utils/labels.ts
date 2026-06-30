@@ -1,4 +1,5 @@
 import type { Language } from "./i18n";
+import { normalizeRole } from "./roles";
 
 const projectStatusLabels: Record<Language, Record<string, string>> = {
   en: {
@@ -20,9 +21,11 @@ const projectStatusLabels: Record<Language, Record<string, string>> = {
 const roleLabels: Record<Language, Record<string, string>> = {
   en: {
     admin: "Admin",
+    "super-admin": "Super admin",
     user: "User",
   },
   az: {
+    "super-admin": "Super inzibatÃ§Ä±",
     admin: "İnzibatçı",
     user: "İstifadəçi",
   },
@@ -50,7 +53,7 @@ export function getProjectStatusLabel(status: string, language: Language = "en")
 }
 
 export function getRoleLabel(role: string, language: Language = "en") {
-  return roleLabels[language][role.trim().toLowerCase()] ?? role;
+  return roleLabels[language][normalizeRole(role)] ?? role;
 }
 
 export function getUserStatusLabel(status: string, language: Language = "en") {

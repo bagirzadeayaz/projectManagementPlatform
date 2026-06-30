@@ -25,13 +25,29 @@ export type ProjectNote = {
   updatedAtMs: number;
 };
 
+export type ProjectTask = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  status: string;
+  deadline: string;
+  userIds: string[];
+  createdBy: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 export type NewProjectNote = Omit<ProjectNote, "id" | "projectId" | "createdAtMs" | "updatedAtMs">;
+export type NewProjectTask = Omit<ProjectTask, "id" | "projectId" | "createdAtMs" | "updatedAtMs">;
+export type ProjectTaskUpdate = Pick<ProjectTask, "title" | "description" | "status" | "deadline" | "userIds">;
 
 export type ProjectUpdate = Pick<Project, "name" | "description" | "status" | "deadline">;
 export type ProjectMemberUpdate = ProjectUpdate & Pick<Project, "leaderId" | "userIds">;
 export type NewProject = ProjectMemberUpdate & Pick<Project, "leaderId">;
 
 export const PROJECT_STATUSES = ["planned", "active", "paused", "blocked", "completed"] as const;
+export const TASK_STATUSES = ["planned", "active", "completed"] as const;
 
 export function getTodayDateInputValue() {
   const today = new Date();
@@ -94,6 +110,21 @@ function toProjectNote(projectId: string, noteId: string, data: Record<string, u
   };
 }
 
+function toProjectTask(projectId: string, taskId: string, data: Record<string, unknown>): ProjectTask {
+  return {
+    id: taskId,
+    projectId,
+    title: readString(data.title, "Untitled task"),
+    description: readString(data.description),
+    status: readString(data.status, "planned"),
+    deadline: readString(data.deadline),
+    userIds: readStringArray(data.userIds),
+    createdBy: readString(data.createdBy),
+    createdAtMs: readTimestampMs(data.createdAtMs),
+    updatedAtMs: readTimestampMs(data.updatedAtMs, readTimestampMs(data.createdAtMs)),
+  };
+}
+
 export async function getProjects() {
   const snapshot = await getDocs(collection(db, "projects"));
 
@@ -143,6 +174,52 @@ export async function deleteProject(projectId: string) {
   await deleteDoc(doc(db, "projects", projectId));
 }
 
+export async function getProjectTasks(projectId: string) {
+  const snapshot = await getDocs(collection(db, "projects", projectId, "tasks"));
+
+  return snapshot.docs
+    .map((taskDoc) => toProjectTask(projectId, taskDoc.id, taskDoc.data()))
+    .sort((firstTask, secondTask) => {
+      const firstDeadline = firstTask.deadline || "9999-12-31";
+      const secondDeadline = secondTask.deadline || "9999-12-31";
+
+      return firstDeadline.localeCompare(secondDeadline) || firstTask.title.localeCompare(secondTask.title);
+    });
+}
+
+export async function addProjectTask(projectId: string, task: NewProjectTask) {
+  const nowMs = Date.now();
+  const taskRef = await addDoc(collection(db, "projects", projectId, "tasks"), {
+    ...task,
+    createdAt: serverTimestamp(),
+    createdAtMs: nowMs,
+    updatedAt: serverTimestamp(),
+    updatedAtMs: nowMs,
+  });
+
+  return {
+    id: taskRef.id,
+    projectId,
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+    ...task,
+  };
+}
+
+export async function updateProjectTask(projectId: string, taskId: string, update: ProjectTaskUpdate) {
+  const nowMs = Date.now();
+
+  await updateDoc(doc(db, "projects", projectId, "tasks", taskId), {
+    ...update,
+    updatedAt: serverTimestamp(),
+    updatedAtMs: nowMs,
+  });
+}
+
+export async function deleteProjectTask(projectId: string, taskId: string) {
+  await deleteDoc(doc(db, "projects", projectId, "tasks", taskId));
+}
+
 export async function getProjectNotes(projectId: string) {
   const snapshot = await getDocs(collection(db, "projects", projectId, "notes"));
   const latestNoteByUser = new Map<string, ProjectNote>();
@@ -182,6 +259,10 @@ export async function saveProjectNote(projectId: string, note: NewProjectNote) {
   };
 }
 
+export async function deleteProjectNote(projectId: string, userId: string) {
+  await deleteDoc(doc(db, "projects", projectId, "notes", userId));
+}
+
 export async function generateProjectDescription(title: string, message = "", language = "en") {
   const response = await fetch("/api/generate-description", {
     method: "POST",
@@ -195,6 +276,30 @@ export async function generateProjectDescription(title: string, message = "", la
 
   if (!response.ok || !data.description) {
     throw new Error(data.error || "Could not generate the project description.");
+  }
+
+  return data.description;
+}
+
+export async function generateTaskDescription(taskTitle: string, message = "", projectTitle = "", language = "en") {
+  const response = await fetch("/api/generate-description", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      descriptionType: "task",
+      language,
+      message,
+      projectTitle,
+      taskTitle,
+    }),
+  });
+
+  const data = (await response.json()) as { description?: string; error?: string };
+
+  if (!response.ok || !data.description) {
+    throw new Error(data.error || "Could not generate the task description.");
   }
 
   return data.description;

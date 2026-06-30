@@ -7,20 +7,27 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useProjectUsers } from "../hooks/useProjectUsers";
 import {
+  deleteProjectTask,
+  deleteProjectNote,
   deleteProject,
   generateProjectDescription,
   getProject,
   getProjectNotes,
+  getProjectTasks,
   saveProjectNote,
   getTodayDateInputValue,
   isPastDeadline,
   PROJECT_STATUSES,
+  TASK_STATUSES,
   updateProject,
+  updateProjectTask,
   type Project,
   type ProjectNote,
+  type ProjectTask,
 } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
 import { getProjectStatusLabel } from "../utils/labels";
+import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
 import { PageHeader, SectionHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
@@ -35,7 +42,11 @@ import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
 function canManageProjects(role: string) {
-  return role.trim().toLowerCase() === "admin";
+  return isAdminRole(role);
+}
+
+function isAssignableUser(projectUser: { role: string }) {
+  return isAssignableRole(projectUser.role);
 }
 
 function getStatusClass(status: string) {
@@ -113,6 +124,8 @@ export function ProjectDetailsPage() {
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingTaskDelete, setConfirmingTaskDelete] = useState<ProjectTask | null>(null);
+  const [confirmingNoteDelete, setConfirmingNoteDelete] = useState<ProjectNote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
@@ -129,33 +142,61 @@ export function ProjectDetailsPage() {
   const [notes, setNotes] = useState<ProjectNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
   const [noteSaving, setNoteSaving] = useState(false);
+  const [noteDeletingId, setNoteDeletingId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [noteError, setNoteError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<ProjectTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [taskStatusSavingId, setTaskStatusSavingId] = useState<string | null>(null);
+  const [taskSavingId, setTaskSavingId] = useState<string | null>(null);
+  const [taskDeletingId, setTaskDeletingId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [taskEditTitle, setTaskEditTitle] = useState("");
+  const [taskEditDescription, setTaskEditDescription] = useState("");
+  const [taskEditStatus, setTaskEditStatus] = useState("planned");
+  const [taskEditDeadline, setTaskEditDeadline] = useState("");
+  const [taskEditUserIds, setTaskEditUserIds] = useState<string[]>([]);
+  const [taskEditUserSearch, setTaskEditUserSearch] = useState("");
+  const [taskError, setTaskError] = useState<string | null>(null);
   const minimumDeadline = getTodayDateInputValue();
   const canDelete = user ? canManageProjects(user.role) : false;
   const isProjectUser = Boolean(user && project?.userIds.includes(user.uid));
   const isProjectLeader = Boolean(user && project?.leaderId === user.uid);
-  const canEdit = canDelete || isProjectLeader;
-  const canViewNotes = Boolean(project && user && (canDelete || isProjectUser));
+  const canViewAllProjectTasks = canDelete || isProjectLeader;
+  const canEditProjectStatus = canDelete || isProjectLeader;
+  const canEdit = canEditProjectStatus;
+  const canViewNotes = Boolean(project && user && (canViewAllProjectTasks || isProjectUser));
   const canWriteNote = Boolean(project && user && isProjectUser);
-  const canEditUsers = canDelete || isProjectLeader;
+  const canEditUsers = canDelete;
+  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
+  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
+  const assignableUserIds = new Set(assignableUsers.map((projectUser) => projectUser.uid));
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
-    ? users.filter((projectUser) =>
+    ? assignableUsers.filter((projectUser) =>
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
-    : users;
+    : assignableUsers;
   const selectedProjectUsers =
     project?.userIds
       .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser)) ?? [];
   const activeParticipantUsers = userIds
-    .map((projectUserId) => users.find((projectUser) => projectUser.uid === projectUserId))
+    .map((projectUserId) => assignableUsers.find((projectUser) => projectUser.uid === projectUserId))
     .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
   const isLeaderInActiveParticipants = activeParticipantUsers.some((projectUser) => projectUser.uid === leaderId);
   const currentProjectUserIds = new Set(project?.userIds ?? []);
   const visibleNotes = notes.filter((note) => currentProjectUserIds.has(note.userId));
   const ownNote = user ? visibleNotes.find((note) => note.userId === user.uid) : undefined;
+  const visibleTasks = canDelete ? tasks : [];
+  const canViewProjectContent = canDelete || isProjectLeader || isProjectUser;
+  const normalizedTaskEditUserSearch = taskEditUserSearch.trim().toLowerCase();
+  const filteredTaskEditUsers = normalizedTaskEditUserSearch
+    ? assignableUsers.filter((projectUser) =>
+        `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedTaskEditUserSearch),
+      )
+    : assignableUsers;
+  const editingTask = editingTaskId ? tasks.find((task) => task.id === editingTaskId) : undefined;
 
   useEffect(() => {
     if (!user || !projectId) {
@@ -246,6 +287,42 @@ export function ProjectDetailsPage() {
   }, [canViewNotes, project, t, user]);
 
   useEffect(() => {
+    if (!project || !user || !canDelete) {
+      setTasks([]);
+      return;
+    }
+
+    let active = true;
+
+    const loadTasks = async () => {
+      setTasksLoading(true);
+      setTaskError(null);
+
+      try {
+        const loadedTasks = await getProjectTasks(project.id);
+
+        if (active) {
+          setTasks(loadedTasks);
+        }
+      } catch (projectTaskError) {
+        if (active) {
+          setTaskError(projectTaskError instanceof Error ? projectTaskError.message : t("tasksLoadFailed"));
+        }
+      } finally {
+        if (active) {
+          setTasksLoading(false);
+        }
+      }
+    };
+
+    void loadTasks();
+
+    return () => {
+      active = false;
+    };
+  }, [canDelete, project, t, user]);
+
+  useEffect(() => {
     if (!canWriteNote) {
       setNoteDraft("");
       return;
@@ -257,7 +334,7 @@ export function ProjectDetailsPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!project || !canEdit) {
+    if (!project || !canEditProjectStatus) {
       return;
     }
 
@@ -265,24 +342,30 @@ export function ProjectDetailsPage() {
     setUsersSelectionError(null);
     setError(null);
 
-    if (isPastDeadline(deadline)) {
+    if (canDelete && isPastDeadline(deadline)) {
       setDeadlineError(t("deadlineCannotBePast"));
       return;
     }
 
-    const nextLeaderId = canDelete ? leaderId || project.leaderId : project.leaderId;
-    const nextUserIds = Array.from(new Set([nextLeaderId, ...userIds].filter(Boolean)));
+    const nextLeaderId = canDelete ? leaderId : project.leaderId;
+    const selectedAssignableUserIds = userIds.filter((projectUserId) => assignableUserIds.has(projectUserId));
+    const nextUserIds = Array.from(new Set([nextLeaderId, ...selectedAssignableUserIds].filter(Boolean)));
 
     if (canEditUsers && nextUserIds.length === 0) {
       setUsersSelectionError(t("selectProjectUser"));
       return;
     }
 
+    if (canEditUsers && (!nextLeaderId || !assignableUserIds.has(nextLeaderId))) {
+      setUsersSelectionError(t("selectProjectLeader"));
+      return;
+    }
+
     const update = {
-      name: name.trim() || t("projectNameFallback"),
-      description: description.trim(),
+      name: canDelete ? name.trim() || t("projectNameFallback") : project.name,
+      description: canDelete ? description.trim() : project.description,
       status: status.trim() || "active",
-      deadline,
+      deadline: canDelete ? deadline : project.deadline,
       leaderId: nextLeaderId,
       userIds: canEditUsers ? nextUserIds : project.userIds,
     };
@@ -369,6 +452,201 @@ export function ProjectDetailsPage() {
     }
   };
 
+  const handleDeleteNote = async (noteUserId: string) => {
+    if (!project || !user) {
+      return;
+    }
+
+    const canDeleteNote = canDelete || (canWriteNote && noteUserId === user.uid);
+
+    if (!canDeleteNote) {
+      return;
+    }
+
+    setNoteDeletingId(noteUserId);
+    setNoteError(null);
+
+    try {
+      await deleteProjectNote(project.id, noteUserId);
+      setNotes((currentNotes) => currentNotes.filter((currentNote) => currentNote.userId !== noteUserId));
+      setConfirmingNoteDelete(null);
+
+      if (noteUserId === user.uid) {
+        setNoteDraft("");
+      }
+    } catch (projectNoteError) {
+      setNoteError(projectNoteError instanceof Error ? projectNoteError.message : t("noteDeleteFailed"));
+    } finally {
+      setNoteDeletingId(null);
+    }
+  };
+
+  const handleTaskStatusChange = async (task: ProjectTask, nextStatus: string) => {
+    if (!project || !user || task.status === nextStatus) {
+      return;
+    }
+
+    if (!TASK_STATUSES.includes(nextStatus as (typeof TASK_STATUSES)[number])) {
+      return;
+    }
+
+    const canUpdateTask = canDelete || task.userIds.includes(user.uid);
+
+    if (!canUpdateTask) {
+      return;
+    }
+
+    setTaskStatusSavingId(task.id);
+    setTaskError(null);
+
+    try {
+      await updateProjectTask(project.id, task.id, {
+        title: task.title,
+        description: task.description,
+        status: nextStatus,
+        deadline: task.deadline,
+        userIds: task.userIds,
+      });
+      setTasks((currentTasks) =>
+        currentTasks.map((currentTask) =>
+          currentTask.id === task.id
+            ? { ...currentTask, status: nextStatus, updatedAtMs: Date.now() }
+            : currentTask,
+        ),
+      );
+    } catch (projectTaskError) {
+      setTaskError(projectTaskError instanceof Error ? projectTaskError.message : t("taskUpdateFailed"));
+    } finally {
+      setTaskStatusSavingId(null);
+    }
+  };
+
+  const startEditingTask = (task: ProjectTask) => {
+    setTaskError(null);
+    setEditingTaskId(task.id);
+    setTaskEditTitle(task.title);
+    setTaskEditDescription(task.description);
+    setTaskEditStatus(TASK_STATUSES.includes(task.status as (typeof TASK_STATUSES)[number]) ? task.status : "active");
+    setTaskEditDeadline(task.deadline);
+    setTaskEditUserIds(task.userIds.filter((taskUserId) => assignableUserIds.has(taskUserId)));
+    setTaskEditUserSearch("");
+  };
+
+  const cancelEditingTask = () => {
+    setEditingTaskId(null);
+    setTaskEditTitle("");
+    setTaskEditDescription("");
+    setTaskEditStatus("planned");
+    setTaskEditDeadline("");
+    setTaskEditUserIds([]);
+    setTaskEditUserSearch("");
+    setTaskError(null);
+  };
+
+  const toggleTaskEditUser = (selectedUserId: string) => {
+    if (!assignableUserIds.has(selectedUserId)) {
+      return;
+    }
+
+    setTaskError(null);
+    setTaskEditUserIds((currentTaskUserIds) =>
+      currentTaskUserIds.includes(selectedUserId)
+        ? currentTaskUserIds.filter((currentUserId) => currentUserId !== selectedUserId)
+        : [...currentTaskUserIds, selectedUserId],
+    );
+  };
+
+  const saveTaskEdit = async (task: ProjectTask) => {
+    if (!project || !canDelete) {
+      return;
+    }
+
+    setTaskError(null);
+
+    if (!taskEditTitle.trim()) {
+      setTaskError(t("taskTitleRequired"));
+      return;
+    }
+
+    if (taskEditDeadline && isPastDeadline(taskEditDeadline)) {
+      setTaskError(t("deadlineCannotBePast"));
+      return;
+    }
+
+    const selectedAssignableUserIds = taskEditUserIds.filter((taskUserId) => assignableUserIds.has(taskUserId));
+
+    if (selectedAssignableUserIds.length === 0) {
+      setTaskError(t("selectTaskUser"));
+      return;
+    }
+
+    setTaskSavingId(task.id);
+
+    try {
+      const update = {
+        title: taskEditTitle.trim(),
+        description: taskEditDescription.trim(),
+        status: taskEditStatus,
+        deadline: taskEditDeadline,
+        userIds: selectedAssignableUserIds,
+      };
+
+      await updateProjectTask(project.id, task.id, update);
+      const nextProjectUserIds = Array.from(new Set([...project.userIds.filter((projectUserId) => assignableUserIds.has(projectUserId)), ...selectedAssignableUserIds]));
+
+      if (nextProjectUserIds.length !== project.userIds.length) {
+        const projectUpdate = {
+          name: project.name,
+          description: project.description,
+          status: project.status,
+          deadline: project.deadline,
+          leaderId: project.leaderId,
+          userIds: nextProjectUserIds,
+        };
+
+        await updateProject(project.id, projectUpdate);
+        setProject({ ...project, ...projectUpdate });
+        setUserIds(nextProjectUserIds);
+      }
+
+      setTasks((currentTasks) =>
+        currentTasks.map((currentTask) =>
+          currentTask.id === task.id
+            ? { ...currentTask, ...update, updatedAtMs: Date.now() }
+            : currentTask,
+        ),
+      );
+      cancelEditingTask();
+    } catch (projectTaskError) {
+      setTaskError(projectTaskError instanceof Error ? projectTaskError.message : t("taskUpdateFailed"));
+    } finally {
+      setTaskSavingId(null);
+    }
+  };
+
+  const handleDeleteTask = async (task: ProjectTask) => {
+    if (!project || !canDelete) {
+      return;
+    }
+
+    setTaskDeletingId(task.id);
+    setTaskError(null);
+
+    try {
+      await deleteProjectTask(project.id, task.id);
+      setTasks((currentTasks) => currentTasks.filter((currentTask) => currentTask.id !== task.id));
+      setConfirmingTaskDelete(null);
+
+      if (editingTaskId === task.id) {
+        cancelEditingTask();
+      }
+    } catch (projectTaskError) {
+      setTaskError(projectTaskError instanceof Error ? projectTaskError.message : t("taskDeleteFailed"));
+    } finally {
+      setTaskDeletingId(null);
+    }
+  };
+
   const cancelEditing = () => {
     if (project) {
       setName(project.name);
@@ -387,7 +665,7 @@ export function ProjectDetailsPage() {
   };
 
   const toggleProjectUser = (selectedUserId: string) => {
-    if (!canEditUsers || selectedUserId === leaderId) {
+    if (!canEditUsers || selectedUserId === leaderId || !assignableUserIds.has(selectedUserId)) {
       return;
     }
 
@@ -430,7 +708,7 @@ export function ProjectDetailsPage() {
       {loading ? <section className="empty-state">{t("loadingProject")}</section> : null}
       {error ? <Alert variant="destructive">{error}</Alert> : null}
 
-      {!loading && project && !editing ? (
+      {!loading && project && !editing && canViewProjectContent ? (
         <Card className="project-detail-panel project-record">
           <div className="project-record-grid">
             <section className="project-record-main">
@@ -490,6 +768,83 @@ export function ProjectDetailsPage() {
             )}
           </section>
 
+          {canDelete ? (
+            <section className="project-tasks-panel">
+              <SectionHeader
+                actions={
+                  <div className="project-section-actions">
+                    <Badge variant="secondary">{visibleTasks.length}</Badge>
+                    <Link className={buttonVariants({ size: "sm" })} href={`/projects/${project.id}/tasks/new`}>
+                      {t("createTask")}
+                    </Link>
+                  </div>
+                }
+                eyebrow={t("tasks")}
+                title={t("projectTasks")}
+              />
+
+              {taskError ? <Alert variant="destructive">{taskError}</Alert> : null}
+              {tasksLoading ? <p className="project-users-note">{t("loadingTasks")}</p> : null}
+              {!tasksLoading && visibleTasks.length === 0 ? <p className="project-users-note">{t("noTasks")}</p> : null}
+              {visibleTasks.length > 0 ? (
+                <div className="project-task-list">
+                  {visibleTasks.map((task) => {
+                    const assignedUsers = task.userIds
+                      .map((taskUserId) => users.find((projectUser) => projectUser.uid === taskUserId))
+                      .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
+
+                    return (
+                      <article className="project-task-item" key={task.id}>
+                        <div className="project-task-item-header">
+                          <div>
+                            <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                            <h3>{task.title}</h3>
+                          </div>
+                          <div className="project-task-item-actions">
+                            <span>{task.deadline || t("noDeadline")}</span>
+                            <Select
+                              className={`status-select status-select-${task.status}`}
+                              disabled={taskStatusSavingId === task.id}
+                              onChange={(event) => void handleTaskStatusChange(task, event.target.value)}
+                              value={task.status}
+                            >
+                              {TASK_STATUSES.map((projectStatus) => (
+                                <option key={projectStatus} value={projectStatus}>
+                                  {getProjectStatusLabel(projectStatus, language)}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                        </div>
+                        {task.description ? <p>{task.description}</p> : null}
+                        <div className="project-task-assignees">
+                          {assignedUsers.length > 0 ? (
+                            assignedUsers.map((taskUser) => (
+                              <span className="project-task-assignee" key={taskUser.uid}>
+                                <ProjectUserAvatar projectUser={taskUser} />
+                                {taskUser.name || taskUser.email}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="project-users-note">{t("noUserAssigned")}</span>
+                          )}
+                        </div>
+                        <div className="project-task-card-actions">
+                          <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => startEditingTask(task)} size="sm" type="button" variant="secondary">
+                            {t("edit")}
+                          </Button>
+                          <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => setConfirmingTaskDelete(task)} size="sm" type="button" variant="destructive">
+                            {taskDeletingId === task.id ? t("deletingTask") : t("deleteTask")}
+                          </Button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           {canViewNotes ? (
             <section className="project-notes-panel">
               <SectionHeader
@@ -512,9 +867,16 @@ export function ProjectDetailsPage() {
                   />
                   <div className="project-note-form-footer">
                     <span className="char-count">{`${noteDraft.length}/800`}</span>
-                    <Button disabled={noteSaving || !noteDraft.trim()} size="sm" type="submit">
-                      {noteSaving ? t("savingNote") : ownNote ? t("updateNote") : t("addNote")}
-                    </Button>
+                    <div className="project-note-form-actions">
+                      {ownNote ? (
+                        <Button disabled={Boolean(noteDeletingId) || noteSaving} onClick={() => setConfirmingNoteDelete(ownNote)} size="sm" type="button" variant="destructive">
+                          {noteDeletingId === user.uid ? t("deletingNote") : t("deleteNote")}
+                        </Button>
+                      ) : null}
+                      <Button disabled={noteSaving || Boolean(noteDeletingId) || !noteDraft.trim()} size="sm" type="submit">
+                        {noteSaving ? t("savingNote") : ownNote ? t("updateNote") : t("addNote")}
+                      </Button>
+                    </div>
                   </div>
                 </form>
               ) : null}
@@ -533,7 +895,20 @@ export function ProjectDetailsPage() {
                           <span>{formatNoteDate(note.updatedAtMs, language)}</span>
                         </header>
                         <p>{note.text}</p>
-                        <small>{t("writtenBy")}: {note.userEmail}</small>
+                        <footer className="project-note-item-footer">
+                          <small>{t("writtenBy")}: {note.userEmail}</small>
+                          {canDelete ? (
+                            <Button
+                              disabled={Boolean(noteDeletingId)}
+                              onClick={() => setConfirmingNoteDelete(note)}
+                              size="sm"
+                              type="button"
+                              variant="destructive"
+                            >
+                              {noteDeletingId === note.userId ? t("deletingNote") : t("deleteNote")}
+                            </Button>
+                          ) : null}
+                        </footer>
                       </div>
                     </article>
                   ))}
@@ -557,7 +932,7 @@ export function ProjectDetailsPage() {
         </Card>
       ) : null}
 
-      {!loading && project && editing ? (
+      {!loading && project && editing && canViewProjectContent ? (
         <Card as="form" className="personalization-form project-detail-edit-form" onSubmit={handleSubmit}>
           <CardHeader className="project-edit-header">
             <p className="auth-kicker">{t("editingProject")}</p>
@@ -565,10 +940,12 @@ export function ProjectDetailsPage() {
             <CardDescription>{t("projectDetails")}</CardDescription>
           </CardHeader>
 
-          <FieldLabel>
-            <span>{t("name")}</span>
-            <Input onChange={(event) => setName(event.target.value)} required type="text" value={name} />
-          </FieldLabel>
+          {canDelete ? (
+            <FieldLabel>
+              <span>{t("name")}</span>
+              <Input onChange={(event) => setName(event.target.value)} required type="text" value={name} />
+            </FieldLabel>
+          ) : null}
 
           <FieldLabel>
             <span>{t("status")}</span>
@@ -586,19 +963,21 @@ export function ProjectDetailsPage() {
             </Select>
           </FieldLabel>
 
-          <FieldLabel>
-            <span>{t("deadline")}</span>
-            <Input
-              min={minimumDeadline}
-              onChange={(event) => {
-                setDeadline(event.target.value);
-                setDeadlineError(null);
-              }}
-              required
-              type="date"
-              value={deadline}
-            />
-          </FieldLabel>
+          {canDelete ? (
+            <FieldLabel>
+              <span>{t("deadline")}</span>
+              <Input
+                min={minimumDeadline}
+                onChange={(event) => {
+                  setDeadline(event.target.value);
+                  setDeadlineError(null);
+                }}
+                required
+                type="date"
+                value={deadline}
+              />
+            </FieldLabel>
+          ) : null}
 
           {canDelete ? (
             <FieldLabel>
@@ -609,11 +988,9 @@ export function ProjectDetailsPage() {
                   setUserIds((currentUserIds) => Array.from(new Set([event.target.value, ...currentUserIds])));
                 }}
                 required
-                value={leaderId}
+                value={isLeaderInActiveParticipants ? leaderId : ""}
               >
-                {!isLeaderInActiveParticipants && leaderId ? (
-                  <option value={leaderId}>{t("projectLeader")}</option>
-                ) : null}
+                <option value="">{t("selectProjectLeader")}</option>
                 {activeParticipantUsers.map((projectUser) => (
                   <option key={projectUser.uid} value={projectUser.uid}>
                     {projectUser.name || projectUser.email}
@@ -623,66 +1000,70 @@ export function ProjectDetailsPage() {
             </FieldLabel>
           ) : null}
 
-          <fieldset className="project-users-field">
-            <legend>{t("participants")}</legend>
-            <label className="project-users-search">
-              <span>{t("searchUsers")}</span>
-              <Input
-                onChange={(event) => setUserSearch(event.target.value)}
-                placeholder={t("searchUsersPlaceholder")}
-                type="search"
-                value={userSearch}
-              />
-            </label>
-            {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
-            {!usersLoading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
-            {!usersLoading && users.length > 0 && filteredUsers.length === 0 ? (
-              <p className="project-users-note">{t("noMatchingUsers")}</p>
-            ) : null}
-            <div className="project-users-list">
-              {filteredUsers.map((projectUser) => (
-                <label className="project-user-option" key={projectUser.uid}>
-                  <Checkbox
-                    checked={userIds.includes(projectUser.uid)}
-                    disabled={!canEditUsers || projectUser.uid === leaderId}
-                    onChange={() => toggleProjectUser(projectUser.uid)}
+          {canDelete ? (
+            <>
+              <fieldset className="project-users-field">
+                <legend>{t("participants")}</legend>
+                <label className="project-users-search">
+                  <span>{t("searchUsers")}</span>
+                  <Input
+                    onChange={(event) => setUserSearch(event.target.value)}
+                    placeholder={t("searchUsersPlaceholder")}
+                    type="search"
+                    value={userSearch}
                   />
-                  <span>{projectUser.name || projectUser.email}</span>
-                  <small>{projectUser.uid === leaderId ? t("projectLeader") : projectUser.email}</small>
                 </label>
-              ))}
-            </div>
-          </fieldset>
+                {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
+                {!usersLoading && assignableUsers.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+                {!usersLoading && assignableUsers.length > 0 && filteredUsers.length === 0 ? (
+                  <p className="project-users-note">{t("noMatchingUsers")}</p>
+                ) : null}
+                <div className="project-users-list">
+                  {filteredUsers.map((projectUser) => (
+                    <label className="project-user-option" key={projectUser.uid}>
+                      <Checkbox
+                        checked={userIds.includes(projectUser.uid)}
+                        disabled={!canEditUsers || projectUser.uid === leaderId}
+                        onChange={() => toggleProjectUser(projectUser.uid)}
+                      />
+                      <span>{projectUser.name || projectUser.email}</span>
+                      <small>{projectUser.uid === leaderId ? t("projectLeader") : projectUser.email}</small>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
 
-          <FieldLabel>
-            <span>{t("descriptionAiMessage")}</span>
-            <Textarea
-              maxLength={1000}
-              onChange={(event) => setDescriptionMessage(event.target.value)}
-              placeholder={t("descriptionAiPlaceholder")}
-              rows={4}
-              value={descriptionMessage}
-            />
-            <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
-          </FieldLabel>
+              <FieldLabel>
+                <span>{t("descriptionAiMessage")}</span>
+                <Textarea
+                  maxLength={1000}
+                  onChange={(event) => setDescriptionMessage(event.target.value)}
+                  placeholder={t("descriptionAiPlaceholder")}
+                  rows={4}
+                  value={descriptionMessage}
+                />
+                <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
+              </FieldLabel>
 
-          <FieldLabel>
-            <span className="field-label-row">
-              {t("description")}
-              <Button
-                className="inline-ai-button"
-                disabled={generatingDescription || !name.trim()}
-                onClick={handleGenerateDescription}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                {generatingDescription ? t("generating") : t("generateWithAi")}
-              </Button>
-            </span>
-            <Textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} required rows={6} value={description} />
-            <div className="char-count">{`${description?.length || 0}/500`}</div>
-          </FieldLabel>
+              <FieldLabel>
+                <span className="field-label-row">
+                  {t("description")}
+                  <Button
+                    className="inline-ai-button"
+                    disabled={generatingDescription || !name.trim()}
+                    onClick={handleGenerateDescription}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    {generatingDescription ? t("generating") : t("generateWithAi")}
+                  </Button>
+                </span>
+                <Textarea onChange={(event) => setDescription(event.target.value)} maxLength={500} required rows={6} value={description} />
+                <div className="char-count">{`${description?.length || 0}/500`}</div>
+              </FieldLabel>
+            </>
+          ) : null}
 
           {generationError ? <Alert variant="destructive">{generationError}</Alert> : null}
           {deadlineError ? <Alert variant="destructive">{deadlineError}</Alert> : null}
@@ -700,14 +1081,132 @@ export function ProjectDetailsPage() {
         </Card>
       ) : null}
 
+      {!loading && project && !canViewProjectContent ? <section className="empty-state">{t("noTasks")}</section> : null}
       {!loading && !project && !error ? <section className="empty-state">{t("projectMissing")}</section> : null}
+
+      <Dialog open={Boolean(editingTask && canDelete)}>
+        {editingTask ? (
+          <DialogContent
+            aria-labelledby={`edit-task-${editingTask.id}`}
+            className="project-task-edit-dialog"
+            onInteractOutside={taskSavingId === editingTask.id ? undefined : cancelEditingTask}
+          >
+            <DialogHeader>
+              <p className="auth-kicker">{t("tasks")}</p>
+              <DialogTitle id={`edit-task-${editingTask.id}`}>{t("editTask")}</DialogTitle>
+              <DialogDescription>{editingTask.title}</DialogDescription>
+            </DialogHeader>
+
+            <div className="project-task-edit-form">
+              <div className="project-task-form-grid">
+                <FieldLabel>
+                  <span>{t("taskTitle")}</span>
+                  <Input onChange={(event) => setTaskEditTitle(event.target.value)} required type="text" value={taskEditTitle} />
+                </FieldLabel>
+                <FieldLabel>
+                  <span>{t("status")}</span>
+                  <Select className={`status-select status-select-${taskEditStatus}`} onChange={(event) => setTaskEditStatus(event.target.value)} value={taskEditStatus}>
+                    {TASK_STATUSES.map((projectStatus) => (
+                      <option key={projectStatus} value={projectStatus}>
+                        {getProjectStatusLabel(projectStatus, language)}
+                      </option>
+                    ))}
+                  </Select>
+                </FieldLabel>
+                <FieldLabel>
+                  <span>{t("deadline")}</span>
+                  <Input min={minimumDeadline} onChange={(event) => setTaskEditDeadline(event.target.value)} type="date" value={taskEditDeadline} />
+                </FieldLabel>
+              </div>
+
+              <FieldLabel>
+                <span>{t("description")}</span>
+                <Textarea onChange={(event) => setTaskEditDescription(event.target.value)} rows={3} value={taskEditDescription} />
+              </FieldLabel>
+
+              <fieldset className="project-users-field">
+                <legend>{t("taskParticipants")}</legend>
+                <label className="project-users-search">
+                  <span>{t("searchUsers")}</span>
+                  <Input
+                    onChange={(event) => setTaskEditUserSearch(event.target.value)}
+                    placeholder={t("searchUsersPlaceholder")}
+                    type="search"
+                    value={taskEditUserSearch}
+                  />
+                </label>
+                {filteredTaskEditUsers.length === 0 ? <p className="project-users-note">{t("noMatchingUsers")}</p> : null}
+                <div className="project-users-list">
+                  {filteredTaskEditUsers.map((projectUser) => (
+                    <label className="project-user-option" key={projectUser.uid}>
+                      <Checkbox checked={taskEditUserIds.includes(projectUser.uid)} onChange={() => toggleTaskEditUser(projectUser.uid)} />
+                      <span>{projectUser.name || projectUser.email}</span>
+                      <small>{projectUser.email}</small>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+
+            <DialogFooter>
+              <Button disabled={taskSavingId === editingTask.id} onClick={cancelEditingTask} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button disabled={taskSavingId === editingTask.id} onClick={() => void saveTaskEdit(editingTask)} type="button">
+                {taskSavingId === editingTask.id ? t("saving") : t("save")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={Boolean(confirmingTaskDelete && canDelete)}>
+        {confirmingTaskDelete ? (
+          <DialogContent aria-labelledby={`delete-task-${confirmingTaskDelete.id}`}>
+            <DialogHeader>
+              <p className="auth-kicker">{t("deleteTask")}</p>
+              <DialogTitle id={`delete-task-${confirmingTaskDelete.id}`}>
+                {t("deleteTaskQuestion", { name: confirmingTaskDelete.title })}
+              </DialogTitle>
+              <DialogDescription>{t("deleteTaskCopy")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button disabled={taskDeletingId === confirmingTaskDelete.id} onClick={() => setConfirmingTaskDelete(null)} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button disabled={taskDeletingId === confirmingTaskDelete.id} onClick={() => void handleDeleteTask(confirmingTaskDelete)} type="button" variant="destructive">
+                {taskDeletingId === confirmingTaskDelete.id ? t("deletingTask") : t("delete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+
+      <Dialog open={Boolean(confirmingNoteDelete)}>
+        {confirmingNoteDelete ? (
+          <DialogContent aria-labelledby={`delete-note-${confirmingNoteDelete.id}`}>
+            <DialogHeader>
+              <p className="auth-kicker">{t("deleteNote")}</p>
+              <DialogTitle id={`delete-note-${confirmingNoteDelete.id}`}>
+                {t("deleteNoteQuestion", { name: confirmingNoteDelete.userName || confirmingNoteDelete.userEmail })}
+              </DialogTitle>
+              <DialogDescription>{t("deleteNoteCopy")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button disabled={noteDeletingId === confirmingNoteDelete.userId} onClick={() => setConfirmingNoteDelete(null)} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Button disabled={noteDeletingId === confirmingNoteDelete.userId} onClick={() => void handleDeleteNote(confirmingNoteDelete.userId)} type="button" variant="destructive">
+                {noteDeletingId === confirmingNoteDelete.userId ? t("deletingNote") : t("delete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
 
       <Dialog open={Boolean(confirmingDelete && project && canDelete)}>
         {project ? (
           <DialogContent aria-labelledby={`delete-${project.id}`}>
-            <div className="confirm-icon" aria-hidden="true">
-              !
-            </div>
             <DialogHeader>
               <p className="auth-kicker">{t("deleteProject")}</p>
               <DialogTitle id={`delete-${project.id}`}>{t("deleteProjectQuestion", { name: project.name })}</DialogTitle>

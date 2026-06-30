@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, MouseEvent, ReactNode } from "react";
 
 import { cn } from "../../utils/cn";
 
@@ -12,9 +12,19 @@ export function Dialog({
   return open ? children : null;
 }
 
-export function DialogContent({ className, ...props }: HTMLAttributes<HTMLElement>) {
+type DialogContentProps = HTMLAttributes<HTMLElement> & {
+  onInteractOutside?: () => void;
+};
+
+export function DialogContent({ className, onInteractOutside, ...props }: DialogContentProps) {
+  const handleBackdropMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onInteractOutside?.();
+    }
+  };
+
   return (
-    <div className="ui-dialog-backdrop" role="presentation">
+    <div className="ui-dialog-backdrop" onMouseDown={handleBackdropMouseDown} role="presentation">
       <section aria-modal="true" className={cn("ui-dialog-content", className)} role="dialog" {...props} />
     </div>
   );

@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
+import { useProjectUsers } from "../hooks/useProjectUsers";
 import { useProjects } from "../hooks/useProjects";
-import { PROJECT_STATUSES, type Project } from "../services/project.service";
-import { getProjectStatusLabel, getRoleLabel } from "../utils/labels";
+import { PROJECT_STATUSES, TASK_STATUSES, type Project, type ProjectTask } from "../services/project.service";
+import type { ProjectUser } from "../services/user.service";
+import { getProjectStatusLabel } from "../utils/labels";
+import { isAdminRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
-import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
 import { Badge } from "./ui/badge";
-import { Button, buttonVariants } from "./ui/button";
+import { Button } from "./ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { Select } from "./ui/select";
@@ -21,15 +23,42 @@ import { Separator } from "./ui/separator";
 import { Tabs, TabsTrigger } from "./ui/tabs";
 
 type ProjectSort = "deadline-asc" | "deadline-desc" | "name-asc" | "name-desc" | "status-asc";
-type ProjectsDashboardView = "all" | "mine";
-type AdminDashboardTab = "projects" | "statistics";
+type ProjectsDashboardView = "all" | "mine" | "statistics";
+type AdminStatisticsTab = "projects" | "tasks";
+type UserTaskItem = {
+  canMove: boolean;
+  project: Project;
+  task: ProjectTask;
+};
+
+function getUserDisplayName(projectUser: ProjectUser) {
+  return projectUser.name || projectUser.email || "User";
+}
+
+function DashboardTaskAvatar({ projectUser }: { projectUser: ProjectUser }) {
+  const displayName = getUserDisplayName(projectUser);
+
+  if (projectUser.photoURL) {
+    return <img alt="" className="task-board-assignee-avatar" src={projectUser.photoURL} />;
+  }
+
+  return (
+    <span className="task-board-assignee-avatar" aria-hidden="true">
+      {displayName.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
 
 function canEditProjects(role: string) {
-  return role.trim().toLowerCase() === "admin";
+  return isAdminRole(role);
 }
 
 function getStatusClass(status: string) {
   return `project-status project-status-${status.toLowerCase()}`;
+}
+
+function getTaskProgressStatus(status: string) {
+  return TASK_STATUSES.includes(status as (typeof TASK_STATUSES)[number]) ? status : "active";
 }
 
 function getDeadlineSortValue(project: Project) {
@@ -38,6 +67,10 @@ function getDeadlineSortValue(project: Project) {
 
 function countProjects(projects: Project[], status: string) {
   return projects.filter((project) => project.status === status).length;
+}
+
+function countTasks(tasks: ProjectTask[], status: string) {
+  return tasks.filter((task) => getTaskProgressStatus(task.status) === status).length;
 }
 
 function getPercent(value: number, total: number) {
@@ -84,21 +117,35 @@ function AdminStatistics({
   loading,
   onRefresh,
   projects,
+  tasksByProjectId,
 }: {
   loading: boolean;
   onRefresh: () => void;
   projects: Project[];
+  tasksByProjectId: Record<string, ProjectTask[]>;
 }) {
   const { language, t } = useAuth();
+  const [statisticsTab, setStatisticsTab] = useState<AdminStatisticsTab>("projects");
+  const allTasks = projects.flatMap((project) => tasksByProjectId[project.id] ?? []);
   const totalProjects = projects.length;
+  const totalTasks = allTasks.length;
   const completedProjects = countProjects(projects, "completed");
   const activeProjects = countProjects(projects, "active");
   const plannedProjects = countProjects(projects, "planned");
+  const completedTasks = countTasks(allTasks, "completed");
+  const activeTasks = countTasks(allTasks, "active");
+  const plannedTasks = countTasks(allTasks, "planned");
   const completionRate = getPercent(completedProjects, totalProjects);
+  const taskCompletionRate = getPercent(completedTasks, totalTasks);
   const assignedProjects = projects.filter((project) => project.userIds.length > 0).length;
   const projectsWithoutUsers = totalProjects - assignedProjects;
+  const assignedTasks = allTasks.filter((task) => task.userIds.length > 0).length;
+  const unassignedTasks = totalTasks - assignedTasks;
   const averageTeamSize = totalProjects > 0
     ? (projects.reduce((total, project) => total + project.userIds.length, 0) / totalProjects).toFixed(1)
+    : "0.0";
+  const averageTaskAssignees = totalTasks > 0
+    ? (allTasks.reduce((total, task) => total + task.userIds.length, 0) / totalTasks).toFixed(1)
     : "0.0";
   const statusRows = PROJECT_STATUSES.map((projectStatus) => {
     const value = countProjects(projects, projectStatus);
@@ -107,6 +154,16 @@ function AdminStatistics({
       label: getProjectStatusLabel(projectStatus, language),
       percent: getPercent(value, totalProjects),
       status: projectStatus,
+      value,
+    };
+  });
+  const taskStatusRows = TASK_STATUSES.map((taskStatus) => {
+    const value = countTasks(allTasks, taskStatus);
+
+    return {
+      label: getProjectStatusLabel(taskStatus, language),
+      percent: getPercent(value, totalTasks),
+      status: taskStatus,
       value,
     };
   });
@@ -126,11 +183,33 @@ function AdminStatistics({
     return distance !== null && distance > 7;
   }).length;
   const noDeadlineProjects = projects.filter((project) => !project.deadline).length;
+  const overdueTasks = allTasks.filter((task) => {
+    const distance = getDeadlineDistance(task.deadline);
+
+    return distance !== null && distance < 0;
+  }).length;
+  const upcomingTasks = allTasks.filter((task) => {
+    const distance = getDeadlineDistance(task.deadline);
+
+    return distance !== null && distance >= 0 && distance <= 7;
+  }).length;
+  const laterTasks = allTasks.filter((task) => {
+    const distance = getDeadlineDistance(task.deadline);
+
+    return distance !== null && distance > 7;
+  }).length;
+  const noDeadlineTasks = allTasks.filter((task) => !task.deadline).length;
   const deadlineRows = [
     { label: t("overdueProjects"), tone: "danger", value: overdueProjects },
     { label: t("upcomingProjects"), tone: "warning", value: upcomingProjects },
     { label: t("laterProjects"), tone: "info", value: laterProjects },
     { label: t("noDeadline"), tone: "muted", value: noDeadlineProjects },
+  ];
+  const taskDeadlineRows = [
+    { label: t("overdueProjects"), tone: "danger", value: overdueTasks },
+    { label: t("upcomingProjects"), tone: "warning", value: upcomingTasks },
+    { label: t("laterProjects"), tone: "info", value: laterTasks },
+    { label: t("noDeadline"), tone: "muted", value: noDeadlineTasks },
   ];
   const kpis = [
     { label: t("totalProjects"), tone: "default", value: totalProjects },
@@ -138,20 +217,43 @@ function AdminStatistics({
     { label: t("plannedProjects"), tone: "secondary", value: plannedProjects },
     { label: t("completionRate"), tone: "info", value: `${completionRate}%` },
   ];
+  const taskKpis = [
+    { label: t("totalTasks"), tone: "default", value: totalTasks },
+    { label: t("activeTasks"), tone: "success", value: activeTasks },
+    { label: t("plannedTasks"), tone: "secondary", value: plannedTasks },
+    { label: t("taskCompletionRate"), tone: "info", value: `${taskCompletionRate}%` },
+  ];
 
   return (
     <section className="admin-statistics" aria-label={t("statistics")}>
       <div className="admin-statistics-heading">
         <div>
           <p className="auth-kicker">{t("statistics")}</p>
-          <h2>{t("projectHealth")}</h2>
-          <p>{t("adminStatisticsSubtitle")}</p>
+          <h2>{statisticsTab === "projects" ? t("projectHealth") : t("taskHealth")}</h2>
+          <p>{statisticsTab === "projects" ? t("adminStatisticsSubtitle") : t("taskStatisticsSubtitle")}</p>
         </div>
         <Button disabled={loading} onClick={onRefresh} size="sm" type="button" variant="secondary">
           {loading ? t("refreshing") : t("refresh")}
         </Button>
       </div>
 
+      <Tabs className="admin-statistics-subtabs" aria-label={t("statistics")}>
+        <TabsTrigger
+          aria-selected={statisticsTab === "projects"}
+          onClick={() => setStatisticsTab("projects")}
+        >
+          {t("projectStats")}
+        </TabsTrigger>
+        <TabsTrigger
+          aria-selected={statisticsTab === "tasks"}
+          onClick={() => setStatisticsTab("tasks")}
+        >
+          {t("taskStats")}
+        </TabsTrigger>
+      </Tabs>
+
+      {statisticsTab === "projects" ? (
+        <>
       <section className="dashboard-summary admin-stat-summary">
         {kpis.map((stat) => (
           <Card className={`dashboard-stat dashboard-stat-${stat.tone}`} key={stat.label}>
@@ -239,11 +341,105 @@ function AdminStatistics({
           </div>
         </Card>
       </section>
+        </>
+      ) : null}
+
+      {statisticsTab === "tasks" ? (
+        <>
+      <section className="dashboard-summary admin-stat-summary">
+        {taskKpis.map((stat) => (
+          <Card className={`dashboard-stat dashboard-stat-${stat.tone}`} key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </Card>
+        ))}
+      </section>
+
+      <section className="admin-visual-grid">
+        <Card className="admin-visual-card">
+          <div className="admin-visual-card-header">
+            <p className="auth-kicker">{t("tasks")}</p>
+            <h3>{t("taskStatusOverview")}</h3>
+          </div>
+          <div className="stat-bar-list">
+            {taskStatusRows.map((row) => (
+              <div className="stat-bar-row" key={row.status}>
+                <div className="stat-bar-label">
+                  <span>{row.label}</span>
+                  <strong>{row.value}</strong>
+                </div>
+                <progress
+                  aria-label={`${row.label}: ${row.percent}%`}
+                  className={`stat-bar-progress stat-bar-progress-${row.status}`}
+                  max={100}
+                  value={row.percent}
+                />
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="admin-visual-card admin-visual-card-center">
+          <div className="admin-visual-card-header">
+            <p className="auth-kicker">{t("completedTasks")}</p>
+            <h3>{t("taskCompletionRate")}</h3>
+          </div>
+          <div className="stats-donut">
+            <svg className="stats-donut-chart" viewBox="0 0 120 120" aria-hidden="true">
+              <circle className="stats-donut-track" cx="60" cy="60" r="50" pathLength="100" />
+              <circle className="stats-donut-value" cx="60" cy="60" r="50" pathLength="100" strokeDasharray={`${taskCompletionRate} 100`} />
+            </svg>
+            <span className="stats-donut-value-label">{taskCompletionRate}%</span>
+            <progress className="stats-donut-progress" aria-label={t("taskCompletionRate")} max={100} value={taskCompletionRate} />
+          </div>
+          <p className="stats-donut-copy">
+            {completedTasks} / {totalTasks}
+          </p>
+        </Card>
+
+        <Card className="admin-visual-card">
+          <div className="admin-visual-card-header">
+            <p className="auth-kicker">{t("deadline")}</p>
+            <h3>{t("taskDeadlineHealth")}</h3>
+          </div>
+          <div className="deadline-health-list">
+            {taskDeadlineRows.map((row) => (
+              <div className={`deadline-health-item deadline-health-item-${row.tone}`} key={row.label}>
+                <span>{row.label}</span>
+                <strong>{row.value}</strong>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="admin-visual-card">
+          <div className="admin-visual-card-header">
+            <p className="auth-kicker">{t("taskParticipants")}</p>
+            <h3>{t("taskLoad")}</h3>
+          </div>
+          <div className="team-load-grid">
+            <div>
+              <span>{t("assignedTasks")}</span>
+              <strong>{assignedTasks}</strong>
+            </div>
+            <div>
+              <span>{t("unassignedTasks")}</span>
+              <strong>{unassignedTasks}</strong>
+            </div>
+            <div>
+              <span>{t("averageTaskAssignees")}</span>
+              <strong>{averageTaskAssignees}</strong>
+            </div>
+          </div>
+        </Card>
+      </section>
+        </>
+      ) : null}
     </section>
   );
 }
 
-function ProjectCard({ project }: { project: Project }) {
+function ProjectCard({ project, tasks }: { project: Project; tasks: ProjectTask[] }) {
   const { language, t } = useAuth();
 
   return (
@@ -257,6 +453,7 @@ function ProjectCard({ project }: { project: Project }) {
         </CardHeader>
         <CardContent>
           <p className="project-description">{project.description || t("descriptionMissing")}</p>
+          <p className="project-task-count">{t("tasksShown", { count: tasks.length })}</p>
         </CardContent>
         <CardFooter className="project-card-footer">
           {project.deadline ? <p className="project-meta">{t("deadline")}: {project.deadline}</p> : <p className="project-meta">{t("noDeadline")}</p>}
@@ -267,15 +464,275 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
+function UserTaskBoard({
+  items,
+  loading,
+  onMoveTask,
+  savingTaskId,
+  users,
+}: {
+  items: UserTaskItem[];
+  loading: boolean;
+  onMoveTask: (projectId: string, taskId: string, status: string) => Promise<void>;
+  savingTaskId: string | null;
+  users: ProjectUser[];
+}) {
+  const { language, t } = useAuth();
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragReadyTaskId, setDragReadyTaskId] = useState<string | null>(null);
+  const [selectedTaskItem, setSelectedTaskItem] = useState<UserTaskItem | null>(null);
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const didDragRef = useRef(false);
+  const longPressClickBlockRef = useRef(false);
+  const pressPointRef = useRef<{ taskId: string; x: number; y: number } | null>(null);
+  const userById = new Map(users.map((projectUser) => [projectUser.uid, projectUser]));
+
+  const getColumnItems = (status: string) => items.filter((item) => getTaskProgressStatus(item.task.status) === status);
+  const selectedAssignedUsers = selectedTaskItem
+    ? selectedTaskItem.task.userIds
+      .map((taskUserId) => userById.get(taskUserId))
+      .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser))
+    : [];
+  const clearPressTimer = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+  const clearDragStateSoon = () => {
+    window.setTimeout(() => {
+      if (!didDragRef.current) {
+        setDragReadyTaskId(null);
+      }
+    }, 120);
+  };
+
+  return (
+    <>
+      <section className="task-board" aria-label={t("myTasks")}>
+        {TASK_STATUSES.map((status) => {
+          const columnItems = getColumnItems(status);
+
+          return (
+            <section
+              className="task-board-column"
+              key={status}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const transferValue = event.dataTransfer.getData("application/json");
+
+                if (!transferValue) {
+                  return;
+                }
+
+                const draggedTask = JSON.parse(transferValue) as { projectId: string; status: string; taskId: string };
+                const sourceTask = items.find((item) => item.project.id === draggedTask.projectId && item.task.id === draggedTask.taskId);
+
+                setDraggingTaskId(null);
+
+                if (!sourceTask?.canMove) {
+                  return;
+                }
+
+                if (draggedTask.status !== status) {
+                  void onMoveTask(draggedTask.projectId, draggedTask.taskId, status);
+                }
+              }}
+            >
+              <header className="task-board-column-header">
+                <div>
+                  <p className="auth-kicker">{t("progress")}</p>
+                  <h2>{getProjectStatusLabel(status, language)}</h2>
+                </div>
+                <Badge variant="secondary">{columnItems.length}</Badge>
+              </header>
+
+              <div className="task-board-list">
+                {columnItems.map(({ canMove, project, task }) => {
+                  const canTryDragTask = !loading && savingTaskId !== task.id;
+                  const canStartDragTask = canMove && canTryDragTask;
+                  const assignedUsers = task.userIds
+                    .map((taskUserId) => userById.get(taskUserId))
+                    .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
+                  const taskItem = { canMove, project, task };
+
+                  return (
+                    <article
+                      className={`task-board-card${draggingTaskId === task.id ? " task-board-card-dragging" : ""}${canMove ? "" : " task-board-card-readonly"}${dragReadyTaskId === task.id ? " task-board-card-drag-ready" : ""}`}
+                      draggable={dragReadyTaskId === task.id && canStartDragTask}
+                      key={task.id}
+                      onClick={() => {
+                        if (didDragRef.current || longPressClickBlockRef.current) {
+                          didDragRef.current = false;
+                          longPressClickBlockRef.current = false;
+                          return;
+                        }
+
+                        setSelectedTaskItem(taskItem);
+                      }}
+                      onDragEnd={() => {
+                        clearPressTimer();
+                        setDraggingTaskId(null);
+                        setDragReadyTaskId(null);
+                      }}
+                      onDragStart={(event) => {
+                        if (!canStartDragTask || dragReadyTaskId !== task.id) {
+                          event.preventDefault();
+                          return;
+                        }
+
+                        didDragRef.current = true;
+                        setDraggingTaskId(task.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("application/json", JSON.stringify({
+                          projectId: project.id,
+                          status: getTaskProgressStatus(task.status),
+                          taskId: task.id,
+                        }));
+                      }}
+                      onPointerCancel={() => {
+                        clearPressTimer();
+                        pressPointRef.current = null;
+                        setDragReadyTaskId(null);
+                      }}
+                      onPointerDown={(event) => {
+                        if (event.pointerType === "mouse" && event.button !== 0) {
+                          return;
+                        }
+
+                        clearPressTimer();
+                        didDragRef.current = false;
+                        longPressClickBlockRef.current = false;
+                        pressPointRef.current = { taskId: task.id, x: event.clientX, y: event.clientY };
+
+                        if (!canStartDragTask) {
+                          return;
+                        }
+
+                        pressTimerRef.current = setTimeout(() => {
+                          longPressClickBlockRef.current = true;
+                          setDragReadyTaskId(task.id);
+                        }, 120);
+                      }}
+                      onPointerMove={(event) => {
+                        if (!canStartDragTask || dragReadyTaskId === task.id) {
+                          return;
+                        }
+
+                        const pressPoint = pressPointRef.current;
+
+                        if (!pressPoint || pressPoint.taskId !== task.id) {
+                          return;
+                        }
+
+                        const movedDistance = Math.hypot(event.clientX - pressPoint.x, event.clientY - pressPoint.y);
+
+                        if (movedDistance > 5) {
+                          clearPressTimer();
+                          longPressClickBlockRef.current = true;
+                          setDragReadyTaskId(task.id);
+                        }
+                      }}
+                      onPointerUp={() => {
+                        clearPressTimer();
+                        pressPointRef.current = null;
+                        clearDragStateSoon();
+                      }}
+                    >
+                      <div className="task-board-card-header">
+                        <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                        {savingTaskId === task.id ? <span>{t("saving")}</span> : null}
+                      </div>
+                      <h3>{task.title}</h3>
+                      {task.description ? <p>{task.description}</p> : null}
+                      <div className="task-board-assignees" aria-label={t("taskParticipants")}>
+                        {assignedUsers.length > 0 ? (
+                          assignedUsers.map((taskUser) => (
+                            <span className="task-board-assignee" key={taskUser.uid}>
+                              <DashboardTaskAvatar projectUser={taskUser} />
+                              {getUserDisplayName(taskUser)}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="task-board-unassigned">{t("noUserAssigned")}</span>
+                        )}
+                      </div>
+                      <footer>
+                        <strong>{project.name}</strong>
+                        <span>{task.deadline || t("noDeadline")}</span>
+                      </footer>
+                    </article>
+                  );
+                })}
+
+                {!loading && columnItems.length === 0 ? <p className="task-board-empty">{t("noTasks")}</p> : null}
+              </div>
+            </section>
+          );
+        })}
+      </section>
+
+      <Dialog open={Boolean(selectedTaskItem)}>
+        {selectedTaskItem ? (
+          <DialogContent
+            aria-labelledby={`task-details-${selectedTaskItem.task.id}`}
+            className="task-details-dialog"
+            onInteractOutside={() => setSelectedTaskItem(null)}
+          >
+            <DialogHeader>
+              <p className="auth-kicker">{selectedTaskItem.project.name}</p>
+              <DialogTitle id={`task-details-${selectedTaskItem.task.id}`}>{selectedTaskItem.task.title}</DialogTitle>
+              <DialogDescription>
+                {getProjectStatusLabel(selectedTaskItem.task.status, language)} - {selectedTaskItem.task.deadline || t("noDeadline")}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="task-details-content">
+              <section>
+                <span>{t("description")}</span>
+                <p>{selectedTaskItem.task.description || t("descriptionMissing")}</p>
+              </section>
+
+              <section>
+                <span>{t("taskParticipants")}</span>
+                <div className="task-board-assignees">
+                  {selectedAssignedUsers.length > 0 ? (
+                    selectedAssignedUsers.map((taskUser) => (
+                      <span className="task-board-assignee" key={taskUser.uid}>
+                        <DashboardTaskAvatar projectUser={taskUser} />
+                        {getUserDisplayName(taskUser)}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="task-board-unassigned">{t("noUserAssigned")}</span>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <DialogFooter>
+              <Button onClick={() => setSelectedTaskItem(null)} type="button" variant="secondary">
+                {t("cancel")}
+              </Button>
+              <Link className="task-details-project-link" href={`/projects/${selectedTaskItem.project.id}`}>
+                {t("openDetails")}
+              </Link>
+            </DialogFooter>
+          </DialogContent>
+        ) : null}
+      </Dialog>
+    </>
+  );
+}
+
 export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardView }) {
-  const router = useRouter();
-  const { user, busy, language, t, signOut } = useAuth();
-  const { projects, loading, error, refresh } = useProjects();
-  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const { user, language, t } = useAuth();
+  const { projects, tasksByProjectId, loading, error, refresh, saveTaskStatus, savingTaskId } = useProjects();
+  const { users } = useProjectUsers(Boolean(user));
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [projectSort, setProjectSort] = useState<ProjectSort>("deadline-asc");
-  const [adminTab, setAdminTab] = useState<AdminDashboardTab>("projects");
 
   if (!user) {
     return (
@@ -287,9 +744,19 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
   const canEdit = canEditProjects(user.role);
   const isMyProjectsView = view === "mine";
-  const visibleProjects = isMyProjectsView
-    ? projects.filter((project) => project.userIds.includes(user.uid))
-    : projects;
+  const isStatisticsView = view === "statistics";
+  const isAdminStatisticsView = canEdit && isStatisticsView;
+  const canSeeAllProjectTasks = (project: Project) => canEdit || project.leaderId === user.uid;
+  const canAccessProjectTasks = (project: Project) =>
+    canSeeAllProjectTasks(project) || (tasksByProjectId[project.id] ?? []).some((task) => task.userIds.includes(user.uid));
+  const visibleProjects = canEdit
+    ? projects
+    : projects.filter(canAccessProjectTasks);
+  const userTaskItems = visibleProjects.flatMap((project) =>
+    (tasksByProjectId[project.id] ?? [])
+      .filter((task) => canSeeAllProjectTasks(project) || task.userIds.includes(user.uid))
+      .map((task) => ({ canMove: canEdit || task.userIds.includes(user.uid), project, task })),
+  );
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredProjects = sortProjects(
     visibleProjects.filter((project) => {
@@ -302,72 +769,69 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     }),
     projectSort,
   );
-  const showingStatistics = canEdit && adminTab === "statistics";
+  const filteredUserTaskItems = userTaskItems.filter(({ project, task }) => {
+    if (!normalizedSearchQuery) {
+      return true;
+    }
 
-  const handleSignOut = async () => {
-    await signOut();
-    setConfirmingSignOut(false);
-    router.push("/");
-  };
+    return `${project.name} ${task.title} ${task.description} ${task.status} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
+  });
+  const showingStatistics = isAdminStatisticsView;
 
   return (
     <main className="projects-page">
       <PageHeader
-        actions={
-          <>
-          <span>{user.name || user.email}</span>
-          <Badge>{getRoleLabel(user.role, language)}</Badge>
-          {isMyProjectsView ? (
-            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
-              {t("allProjects")}
-            </Link>
-          ) : (
-            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/myprojects">
-              {t("myProjects")}
-            </Link>
-          )}
-          <Link className={buttonVariants({ size: "sm" })} href="/projects/new">
-            {t("addProject")}
-          </Link>
-          {canEdit ? (
-            <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/registrations">
-              {t("appUsers")}
-            </Link>
-          ) : null}
-          <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/personalization">
-            {t("profile")}
-          </Link>
-          <Button disabled={busy} onClick={() => setConfirmingSignOut(true)} size="sm" type="button" variant="secondary">
-            {t("logout")}
-          </Button>
-          </>
+        eyebrow={isAdminStatisticsView ? t("statistics") : isMyProjectsView ? t("myProjects") : t("projects")}
+        subtitle={
+          isAdminStatisticsView
+            ? t("adminStatisticsSubtitle")
+            : canEdit
+              ? isMyProjectsView ? t("myProjectsSubtitle") : t("projectsFirestoreSubtitle")
+              : t("taskBoardSubtitle")
         }
-        eyebrow={isMyProjectsView ? t("myProjects") : t("projects")}
-        subtitle={isMyProjectsView ? t("myProjectsSubtitle") : t("projectsFirestoreSubtitle")}
-        title={isMyProjectsView ? t("myProjects") : t("projects")}
+        title={isAdminStatisticsView ? t("statistics") : canEdit ? (isMyProjectsView ? t("myProjects") : t("projects")) : t("myTasks")}
       />
 
       {error ? <p className="auth-message auth-message-error">{error}</p> : null}
 
-      {canEdit ? (
-        <Tabs className="admin-dashboard-tabs" aria-label={t("adminPanel")}>
-          <TabsTrigger
-            aria-selected={adminTab === "projects"}
-            onClick={() => setAdminTab("projects")}
-          >
-            {t("projectList")}
-          </TabsTrigger>
-          <TabsTrigger
-            aria-selected={adminTab === "statistics"}
-            onClick={() => setAdminTab("statistics")}
-          >
-            {t("statistics")}
-          </TabsTrigger>
-        </Tabs>
-      ) : null}
+      {!canEdit ? (
+        <>
+          <Card className="dashboard-control-panel">
+            <section className="project-toolbar">
+              <p>
+                {t("tasksShown", { count: filteredUserTaskItems.length })}
+              </p>
+              <Button disabled={loading} onClick={refresh} size="sm" type="button" variant="secondary">
+                {loading ? t("refreshing") : t("refresh")}
+              </Button>
+            </section>
+            <Separator />
+            <FieldLabel>
+              <span>{t("search")}</span>
+              <Input
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={t("searchTasks")}
+                type="search"
+                value={searchQuery}
+              />
+            </FieldLabel>
+          </Card>
 
-      {showingStatistics ? (
-        <AdminStatistics loading={loading} onRefresh={refresh} projects={visibleProjects} />
+          {loading ? <section className="empty-state">{t("loadingTasks")}</section> : null}
+          {!loading && userTaskItems.length === 0 ? <section className="empty-state">{t("noTasks")}</section> : null}
+          {!loading && userTaskItems.length > 0 && filteredUserTaskItems.length === 0 ? (
+            <section className="empty-state">{t("noMatchingTasks")}</section>
+          ) : null}
+          <UserTaskBoard
+            items={filteredUserTaskItems}
+            loading={loading}
+            onMoveTask={saveTaskStatus}
+            savingTaskId={savingTaskId}
+            users={users}
+          />
+        </>
+      ) : showingStatistics ? (
+        <AdminStatistics loading={loading} onRefresh={refresh} projects={visibleProjects} tasksByProjectId={tasksByProjectId} />
       ) : (
         <>
           <Card className="dashboard-control-panel">
@@ -430,20 +894,15 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
           <section className="projects-grid">
             {filteredProjects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
+              <ProjectCard
+                key={project.id}
+                project={project}
+                tasks={canEdit ? tasksByProjectId[project.id] ?? [] : (tasksByProjectId[project.id] ?? []).filter((task) => task.userIds.includes(user.uid))}
+              />
             ))}
           </section>
         </>
       )}
-
-      {confirmingSignOut ? (
-        <SignOutConfirmDialog
-          busy={busy}
-          onCancel={() => setConfirmingSignOut(false)}
-          onConfirm={() => void handleSignOut()}
-          open={confirmingSignOut}
-        />
-      ) : null}
     </main>
   );
 }

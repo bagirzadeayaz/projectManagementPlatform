@@ -22,6 +22,7 @@ type CropSettings = {
 };
 
 const croppedProfileSize = 512;
+const maxProfileImageBytes = 3 * 1024 * 1024;
 
 function loadImage(source: string, errorMessage: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -122,6 +123,13 @@ export function PersonalizationPage() {
 
     if (file && !file.type.startsWith("image/")) {
       setError(t("chooseImageFile"));
+      event.target.value = "";
+      return;
+    }
+
+    if (file && file.size > maxProfileImageBytes) {
+      setError(t("profilePhotoTooLarge"));
+      event.target.value = "";
       return;
     }
 

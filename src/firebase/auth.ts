@@ -39,6 +39,7 @@ export type UserPreferences = {
 };
 
 const emailUnverifiedStatus = "email-unverified";
+const maxProfilePictureBytes = 3 * 1024 * 1024;
 
 function readString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
@@ -297,6 +298,10 @@ async function deleteProfilePictureFromStorage(photoURL: string) {
 }
 
 export async function uploadUserProfilePicture(user: DbUser, file: File) {
+  if (file.size > maxProfilePictureBytes) {
+    throw new Error("Profile photo must be 3 MB or smaller.");
+  }
+
   const extension = file.name.split(".").pop() || "jpg";
   const pictureRef = ref(storage, `profile-pictures/${user.uid}/${Date.now()}.${extension}`);
 

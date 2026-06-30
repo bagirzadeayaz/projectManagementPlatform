@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +14,7 @@ import {
   PROJECT_STATUSES,
 } from "../services/project.service";
 import { getProjectStatusLabel } from "../utils/labels";
+import { isAdminRole, isAssignableRole, isSuperAdminRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
 import { Alert } from "./ui/alert";
@@ -25,6 +26,10 @@ import { Input } from "./ui/input";
 import { Select } from "./ui/select";
 import { Textarea } from "./ui/textarea";
 
+function isAssignableUser(projectUser: { role: string }) {
+  return isAssignableRole(projectUser.role);
+}
+
 export function NewProjectPage() {
   const router = useRouter();
   const { user, language, t } = useAuth();
@@ -35,6 +40,7 @@ export function NewProjectPage() {
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [deadline, setDeadline] = useState("");
+  const [leaderId, setLeaderId] = useState("");
   const [userIds, setUserIds] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [deadlineError, setDeadlineError] = useState<string | null>(null);
@@ -42,18 +48,41 @@ export function NewProjectPage() {
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const minimumDeadline = getTodayDateInputValue();
+  const canAssignAdminUsers = user ? isSuperAdminRole(user.role) : false;
+  const assignableUsers = canAssignAdminUsers ? users : users.filter(isAssignableUser);
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const filteredUsers = normalizedUserSearch
-    ? users.filter((projectUser) =>
+    ? assignableUsers.filter((projectUser) =>
         `${projectUser.name} ${projectUser.email}`.toLowerCase().includes(normalizedUserSearch),
       )
-    : users;
-  const selectedUserIds = user ? Array.from(new Set([user.uid, ...userIds])) : userIds;
+    : assignableUsers;
+  const selectedUserIds = userIds;
+  const selectedParticipantUsers = selectedUserIds
+    .map((selectedUserId) => assignableUsers.find((projectUser) => projectUser.uid === selectedUserId))
+    .filter((projectUser): projectUser is (typeof assignableUsers)[number] => Boolean(projectUser));
+  const canCreateProject = user ? isAdminRole(user.role) : false;
+
+  useEffect(() => {
+    if (leaderId && !selectedUserIds.includes(leaderId)) {
+      setLeaderId("");
+    }
+  }, [leaderId, selectedUserIds]);
 
   if (!user) {
     return (
       <main className="auth-page">
         <AuthForm />
+      </main>
+    );
+  }
+
+  if (!canCreateProject) {
+    return (
+      <main className="projects-page personalization-page">
+        <section className="empty-state">{t("notAllowedManageProjects")}</section>
+        <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href="/projects">
+          {t("backToProjects")}
+        </Link>
       </main>
     );
   }
@@ -68,13 +97,23 @@ export function NewProjectPage() {
       return;
     }
 
+    if (selectedUserIds.length === 0) {
+      setUsersSelectionError(t("selectProjectUser"));
+      return;
+    }
+
+    if (!leaderId || !selectedUserIds.includes(leaderId)) {
+      setUsersSelectionError(t("selectProjectLeader"));
+      return;
+    }
+
     await createProject(
       {
         name: name.trim() || t("projectNameFallback"),
         description: description.trim(),
         status,
         deadline,
-        leaderId: user.uid,
+        leaderId,
         userIds: selectedUserIds,
       },
       user.uid,
@@ -84,11 +123,21 @@ export function NewProjectPage() {
 
   const toggleProjectUser = (selectedUserId: string) => {
     setUsersSelectionError(null);
-    setUserIds((currentUserIds) =>
-      currentUserIds.includes(selectedUserId)
+    setUserIds((currentUserIds) => {
+      const nextUserIds = currentUserIds.includes(selectedUserId)
         ? currentUserIds.filter((currentUserId) => currentUserId !== selectedUserId)
-        : [...currentUserIds, selectedUserId],
-    );
+        : [...currentUserIds, selectedUserId];
+
+      if (!leaderId && nextUserIds.includes(selectedUserId)) {
+        setLeaderId(selectedUserId);
+      }
+
+      if (leaderId === selectedUserId && !nextUserIds.includes(selectedUserId)) {
+        setLeaderId(nextUserIds[0] ?? "");
+      }
+
+      return nextUserIds;
+    });
   };
 
   const handleGenerateDescription = async () => {
@@ -161,8 +210,8 @@ export function NewProjectPage() {
             />
           </label>
           {usersLoading ? <p className="project-users-note">{t("loadingUsers")}</p> : null}
-          {!usersLoading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
-          {!usersLoading && users.length > 0 && filteredUsers.length === 0 ? (
+          {!usersLoading && assignableUsers.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+          {!usersLoading && assignableUsers.length > 0 && filteredUsers.length === 0 ? (
             <p className="project-users-note">{t("noMatchingUsers")}</p>
           ) : null}
           <div className="project-users-list">
@@ -170,15 +219,31 @@ export function NewProjectPage() {
               <label className="project-user-option" key={projectUser.uid}>
                 <Checkbox
                   checked={selectedUserIds.includes(projectUser.uid)}
-                  disabled={projectUser.uid === user.uid}
                   onChange={() => toggleProjectUser(projectUser.uid)}
                 />
                 <span>{projectUser.name || projectUser.email}</span>
-                <small>{projectUser.uid === user.uid ? t("projectLeader") : projectUser.email}</small>
+                <small>{projectUser.uid === leaderId ? t("projectLeader") : projectUser.email}</small>
               </label>
             ))}
           </div>
         </fieldset>
+
+        <FieldLabel>
+          <span>{t("projectLeader")}</span>
+          <Select
+            disabled={selectedParticipantUsers.length === 0}
+            onChange={(event) => setLeaderId(event.target.value)}
+            required
+            value={leaderId}
+          >
+            <option value="">{t("selectProjectLeader")}</option>
+            {selectedParticipantUsers.map((projectUser) => (
+              <option key={projectUser.uid} value={projectUser.uid}>
+                {projectUser.name || projectUser.email}
+              </option>
+            ))}
+          </Select>
+        </FieldLabel>
 
         <FieldLabel>
           <span>{t("descriptionAiMessage")}</span>

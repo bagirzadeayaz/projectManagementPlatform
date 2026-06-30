@@ -6117,3 +6117,47 @@ body {
     padding-inline: 10px;
   }
 }
+
+/* Form action alignment polish */
+.project-task-form-footer {
+  align-items: center;
+  border-top: 0;
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  margin-top: 2px;
+  padding-top: 4px;
+  width: 100%;
+}
+
+.project-task-form-footer .ui-button {
+  box-shadow: 0 14px 30px rgb(15 23 42 / 14%);
+  min-height: 50px;
+  min-width: 164px;
+  padding-inline: 22px;
+}
+
+.project-task-form-footer .ui-button:hover:not(:disabled) {
+  box-shadow: 0 18px 36px rgb(15 23 42 / 18%);
+}
+
+.field-label-row {
+  min-height: 42px;
+}
+
+.inline-ai-button {
+  align-self: center;
+  min-height: 38px;
+  padding-inline: 16px;
+}
+
+@media (max-width: 640px) {
+  .project-task-form-footer {
+    justify-content: stretch;
+  }
+
+  .project-task-form-footer .ui-button,
+  .inline-ai-button {
+    width: 100%;
+  }
+}

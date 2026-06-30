@@ -26,6 +26,18 @@ function canManageUsers(role: string) {
   return isAdminRole(role);
 }
 
+function canDeleteManagedUser(targetUser: ProjectUser, currentUserId: string, currentUserRole: string) {
+  if (targetUser.uid === currentUserId) {
+    return false;
+  }
+
+  if (isSuperAdminRole(currentUserRole)) {
+    return true;
+  }
+
+  return !isSuperAdminRole(targetUser.role);
+}
+
 function getUserDisplayName(projectUser: ProjectUser) {
   return projectUser.name || projectUser.email;
 }
@@ -166,7 +178,13 @@ function ActiveUsersPanel({
   };
 
   const deleteSelectedUser = async () => {
-    if (!deleteTargetUser || deleteTargetUser.uid === currentUserId) {
+    if (!deleteTargetUser) {
+      return;
+    }
+
+    if (!canDeleteManagedUser(deleteTargetUser, currentUserId, currentUserRole)) {
+      setDeleteError(t("notAllowedManageUsers"));
+      setConfirmingDeleteUserId("");
       return;
     }
 
@@ -217,7 +235,7 @@ function ActiveUsersPanel({
         <div className="admin-users-roster">
           {users.map((activeUser) => {
             const isSelected = activeUser.uid === selectedUserId;
-            const canDeleteUser = activeUser.uid !== currentUserId && (isCurrentUserSuperAdmin || !isAdminRole(activeUser.role));
+            const canDeleteUser = canDeleteManagedUser(activeUser, currentUserId, currentUserRole);
 
             return (
               <div className="admin-user-row-shell" key={activeUser.uid}>

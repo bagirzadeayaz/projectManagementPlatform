@@ -566,6 +566,16 @@ export function ProjectDetailsPage() {
       return;
     }
 
+    if (!taskEditDescription.trim()) {
+      setTaskError(t("descriptionRequired"));
+      return;
+    }
+
+    if (!taskEditDeadline) {
+      setTaskError(t("deadlineRequired"));
+      return;
+    }
+
     if (taskEditDeadline && isPastDeadline(taskEditDeadline)) {
       setTaskError(t("deadlineCannotBePast"));
       return;
@@ -765,7 +775,7 @@ export function ProjectDetailsPage() {
                 title={t("projectTasks")}
               />
 
-              {taskError ? <Alert variant="destructive">{taskError}</Alert> : null}
+              {taskError && !editingTask ? <Alert variant="destructive">{taskError}</Alert> : null}
               {tasksLoading ? <p className="project-users-note">{t("loadingTasks")}</p> : null}
               {!tasksLoading && visibleTasks.length === 0 ? <p className="project-users-note">{t("noTasks")}</p> : null}
               {visibleTasks.length > 0 ? (
@@ -1095,13 +1105,13 @@ export function ProjectDetailsPage() {
                 </FieldLabel>
                 <FieldLabel>
                   <span>{t("deadline")}</span>
-                  <Input min={minimumDeadline} onChange={(event) => setTaskEditDeadline(event.target.value)} type="date" value={taskEditDeadline} />
+                  <Input min={minimumDeadline} onChange={(event) => setTaskEditDeadline(event.target.value)} required type="date" value={taskEditDeadline} />
                 </FieldLabel>
               </div>
 
               <FieldLabel>
                 <span>{t("description")}</span>
-                <Textarea onChange={(event) => setTaskEditDescription(event.target.value)} rows={3} value={taskEditDescription} />
+                <Textarea onChange={(event) => setTaskEditDescription(event.target.value)} required rows={3} value={taskEditDescription} />
               </FieldLabel>
 
               <fieldset className="project-users-field">
@@ -1127,6 +1137,8 @@ export function ProjectDetailsPage() {
                 </div>
               </fieldset>
             </div>
+
+            {taskError ? <Alert variant="destructive">{taskError}</Alert> : null}
 
             <DialogFooter>
               <Button disabled={taskSavingId === editingTask.id} onClick={cancelEditingTask} type="button" variant="secondary">

@@ -4,14 +4,12 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
-import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
 import { isAdminRole } from "../utils/roles";
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
-import { Select } from "./ui/select";
 import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
 import { Tabs, TabsTrigger } from "./ui/tabs";
 
@@ -23,12 +21,14 @@ function getHomePath(role?: string) {
 
 export function AuthForm() {
   const router = useRouter();
-  const { user, busy, error, language, setLanguage, t, clearError, login, register, resendVerificationEmail, sendResetEmail, signOut } = useAuth();
+  const { user, busy, error, t, clearError, login, register, sendResetEmail, signOut } = useAuth();
   const [mode, setMode] = useState<AuthMode>("login");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [registerName, setRegisterName] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
@@ -37,7 +37,6 @@ export function AuthForm() {
 
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode);
-    setConfirmPassword("");
     setPasswordError(null);
     setNotice(null);
     clearError();
@@ -48,18 +47,27 @@ export function AuthForm() {
     setNotice(null);
     setPasswordError(null);
 
-    if (isRegistering && password !== confirmPassword) {
+    if (isRegistering && registerPassword !== registerConfirmPassword) {
       setPasswordError(t("passwordMismatch"));
       return;
     }
 
-    const credentials = { email: email.trim(), password, name: name.trim() };
-
     try {
       if (isRegistering) {
+        const credentials = {
+          email: registerEmail.trim(),
+          password: registerPassword,
+          name: registerName.trim(),
+        };
+
         await register(credentials);
         router.push("/projects");
       } else {
+        const credentials = {
+          email: loginEmail.trim(),
+          password: loginPassword,
+        };
+
         const profile = await login(credentials);
         router.push(getHomePath(profile?.role));
       }
@@ -69,39 +77,18 @@ export function AuthForm() {
   };
 
   const handlePasswordReset = async () => {
-    if (!email.trim()) {
+    if (!loginEmail.trim()) {
       setNotice(t("enterEmailFirst"));
       return;
     }
 
     try {
-      await sendResetEmail(email.trim());
+      await sendResetEmail(loginEmail.trim());
       setNotice(t("passwordResetSent"));
     } catch {
       // The hook already formats and stores the visible error.
     }
   };
-
-  const handleResendVerification = async () => {
-    if (!email.trim()) {
-      setNotice(t("enterEmailFirst"));
-      return;
-    }
-
-    if (!password) {
-      setNotice(t("enterPasswordFirst"));
-      return;
-    }
-
-    try {
-      await resendVerificationEmail({ email: email.trim(), password, name: name.trim() });
-      setNotice(t("verificationEmailResent"));
-    } catch {
-      // The hook already formats and stores the visible error.
-    }
-  };
-
-
 
   const handleSignOut = async () => {
     await signOut();
@@ -166,13 +153,19 @@ export function AuthForm() {
           {isRegistering ? (
             <FieldLabel>
               <span>{t("name")}</span>
-              <Input autoComplete="name" onChange={(event) => setName(event.target.value)} type="text" value={name} required />
+              <Input autoComplete="name" onChange={(event) => setRegisterName(event.target.value)} type="text" value={registerName} required />
             </FieldLabel>
           ) : null}
 
           <FieldLabel>
             <span>{t("email")}</span>
-            <Input autoComplete="email" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+            <Input
+              autoComplete="email"
+              onChange={(event) => isRegistering ? setRegisterEmail(event.target.value) : setLoginEmail(event.target.value)}
+              required
+              type="email"
+              value={isRegistering ? registerEmail : loginEmail}
+            />
           </FieldLabel>
 
           <FieldLabel>
@@ -181,12 +174,17 @@ export function AuthForm() {
               autoComplete={isRegistering ? "new-password" : "current-password"}
               minLength={6}
               onChange={(event) => {
-                setPassword(event.target.value);
+                if (isRegistering) {
+                  setRegisterPassword(event.target.value);
+                } else {
+                  setLoginPassword(event.target.value);
+                }
+
                 setPasswordError(null);
               }}
               required
               type="password"
-              value={password}
+              value={isRegistering ? registerPassword : loginPassword}
             />
           </FieldLabel>
 
@@ -197,12 +195,12 @@ export function AuthForm() {
                 autoComplete="new-password"
                 minLength={6}
                 onChange={(event) => {
-                  setConfirmPassword(event.target.value);
+                  setRegisterConfirmPassword(event.target.value);
                   setPasswordError(null);
                 }}
                 required
                 type="password"
-                value={confirmPassword}
+                value={registerConfirmPassword}
               />
             </FieldLabel>
           ) : null}
@@ -217,20 +215,11 @@ export function AuthForm() {
         </form>
 
         <div className="auth-secondary-actions">
-        {!isRegistering ? (
-          <>
+          {!isRegistering ? (
             <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
               {t("forgotPassword")}
             </Button>
-            <Button className="auth-link-button" disabled={busy} onClick={handleResendVerification} type="button" variant="link">
-              {t("resendVerificationEmail")}
-            </Button>
-          </>
-        ) : (
-          <Button className="auth-link-button" disabled={busy} onClick={handleResendVerification} type="button" variant="link">
-            {t("resendVerificationEmail")}
-          </Button>
-        )}
+          ) : null}
         </div>
       </CardContent>
     </Card>

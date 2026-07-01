@@ -9,7 +9,6 @@ import {
   observeAuthProfile,
   registerWithEmail,
   removeUserProfilePicture,
-  resendEmailVerification,
   resetPassword,
   updateUserPersonalization,
   uploadUserProfilePicture,
@@ -37,7 +36,6 @@ type AuthContextValue = {
   t: (key: TranslationKey, replacements?: Record<string, string | number>) => string;
   login: LoginAction;
   register: AuthAction;
-  resendVerificationEmail: AuthAction;
   sendResetEmail: (email: string) => Promise<unknown>;
   signOut: () => Promise<void>;
   removeProfilePicture: () => Promise<void>;
@@ -164,10 +162,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await runAuthAction(() => registerWithEmail(credentials, language));
   };
 
-  const resendVerificationEmail: AuthAction = async (credentials) => {
-    await runAuthAction(() => resendEmailVerification(credentials, language));
-  };
-
   const sendResetEmail = (email: string) => runAuthAction(() => resetPassword(email));
 
   const signOut = async () => {
@@ -213,7 +207,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       t: (key: TranslationKey, replacements?: Record<string, string | number>) => translate(language, key, replacements),
       login,
       register,
-      resendVerificationEmail,
       sendResetEmail,
       signOut,
       removeProfilePicture,

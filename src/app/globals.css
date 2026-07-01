@@ -5426,6 +5426,7 @@ body {
 }
 
 .task-board {
+  align-items: stretch;
   gap: 14px;
 }
 
@@ -5433,6 +5434,8 @@ body {
   background: color-mix(in srgb, var(--app-surface-muted) 72%, transparent);
   border: 1px solid var(--app-border);
   border-radius: var(--app-radius);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
   padding: 10px;
 }
 

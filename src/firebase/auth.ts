@@ -41,6 +41,16 @@ export type UserPreferences = {
 const emailUnverifiedStatus = "email-unverified";
 const maxProfilePictureBytes = 3 * 1024 * 1024;
 
+function getFirebaseErrorCode(error: unknown) {
+  return typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+}
+
+function getVerificationSentMessage(language: Language) {
+  return language === "az"
+    ? "Təsdiq e-poçtu göndərildi. E-poçt ünvanınızı təsdiqləyin, sonra qeydiyyatı tamamlamaq üçün yenidən daxil olun."
+    : "Verification email sent. Verify your email address, then sign in again to complete registration.";
+}
+
 function readString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
@@ -207,10 +217,21 @@ export async function loginWithEmail({ email, password }: AuthCredentials) {
 export async function registerWithEmail({ email, password, name }: AuthCredentials, language: Language = "en") {
   await useMemoryAuthPersistence();
 
-  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  const normalizedLanguage = normalizeLanguage(language);
+  let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
+
+  try {
+    credential = await createUserWithEmailAndPassword(auth, email, password);
+  } catch (registerError) {
+    if (getFirebaseErrorCode(registerError) !== "auth/email-already-in-use") {
+      throw registerError;
+    }
+
+    return sendNewRegistrationVerification({ email, password, name }, normalizedLanguage);
+  }
+
   const user = credential.user;
   const displayName = name?.trim() ?? "";
-  const normalizedLanguage = normalizeLanguage(language);
 
   if (displayName) {
     await updateProfile(user, { displayName });
@@ -239,11 +260,7 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
   await sendEmailVerification(user);
 
   await signOut(auth);
-  throw new Error(
-    normalizedLanguage === "az"
-      ? "Təsdiq e-poçtu göndərildi. E-poçt ünvanınızı təsdiqləyin, sonra qeydiyyatı tamamlamaq üçün yenidən daxil olun."
-      : "Verification email sent. Verify your email address, then sign in again to complete registration.",
-  );
+  throw new Error(getVerificationSentMessage(normalizedLanguage));
 }
 
 export async function resetPassword(email: string) {
@@ -251,11 +268,10 @@ export async function resetPassword(email: string) {
   return sendPasswordResetEmail(auth, email);
 }
 
-export async function resendEmailVerification({ email, password }: AuthCredentials, language: Language = "en") {
-  await useMemoryAuthPersistence();
-
+async function sendNewRegistrationVerification({ email, password, name }: AuthCredentials, language: Language) {
   const credential = await signInWithEmailAndPassword(auth, email, password);
   const user = credential.user;
+  const displayName = name?.trim() ?? "";
   await user.reload();
 
   if (user.emailVerified) {
@@ -277,8 +293,39 @@ export async function resendEmailVerification({ email, password }: AuthCredentia
     );
   }
 
-  await sendEmailVerification(user);
-  await signOut(auth);
+  const profile = await findUserProfile(user.uid, user.email ?? email);
+
+  if (profile?.status === "denied") {
+    await signOut(auth);
+    throw new Error(language === "az" ? "Hesab sorğusu rədd edilib." : "The account request was denied.");
+  }
+
+  if (displayName && user.displayName !== displayName) {
+    await updateProfile(user, { displayName });
+  }
+
+  await setDoc(doc(db, "users", profile?.docId ?? user.uid), {
+    uid: user.uid,
+    email: user.email ?? email.trim(),
+    name: displayName || profile?.name || "",
+    photoURL: profile?.photoURL || "",
+    role: profile?.role || "user",
+    status: profile?.status || emailUnverifiedStatus,
+    preferences: profile?.preferences ?? {
+      theme: "light",
+      language,
+    },
+    emailVerified: false,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+  try {
+    await sendEmailVerification(user);
+  } finally {
+    await signOut(auth);
+  }
+
+  throw new Error(getVerificationSentMessage(language));
 }
 
 export async function updateUserPersonalization(

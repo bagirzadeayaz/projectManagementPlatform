@@ -75,6 +75,18 @@ function toFriendlyAuthError(error: unknown, language: Language) {
     return language === "az" ? "Düzgün e-poçt ünvanı daxil edin." : "Enter a valid email address.";
   }
 
+  if (message.includes("auth/too-many-requests")) {
+    return language === "az"
+      ? "Çox cəhd edildi. Bir az gözləyin, sonra yenidən cəhd edin."
+      : "Too many attempts. Please wait a bit, then try again.";
+  }
+
+  if (message.includes("auth/operation-timeout")) {
+    return language === "az"
+      ? "Sorğu çox uzun çəkdi. Bir az gözləyin, sonra yenidən cəhd edin."
+      : "The request took too long. Please wait a bit, then try again.";
+  }
+
   return message;
 }
 
@@ -127,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        setUser(null);
         setError(toFriendlyAuthError(authError, language));
         setAuthReady(true);
       },

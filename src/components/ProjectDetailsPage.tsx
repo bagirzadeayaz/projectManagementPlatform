@@ -147,6 +147,7 @@ export function ProjectDetailsPage() {
   const [noteError, setNoteError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const [taskStatusSavingId, setTaskStatusSavingId] = useState<string | null>(null);
   const [taskSavingId, setTaskSavingId] = useState<string | null>(null);
   const [taskDeletingId, setTaskDeletingId] = useState<string | null>(null);
@@ -163,6 +164,7 @@ export function ProjectDetailsPage() {
   const isProjectUser = Boolean(user && project?.userIds.includes(user.uid));
   const isProjectLeader = Boolean(user && project?.leaderId === user.uid);
   const canViewAllProjectTasks = canDelete || isProjectLeader;
+  const hasAssignedProjectTask = Boolean(user && tasks.some((task) => task.userIds.includes(user.uid)));
   const canEditProjectStatus = canDelete || isProjectLeader;
   const canEdit = canEditProjectStatus;
   const canViewNotes = Boolean(project && user && (canViewAllProjectTasks || isProjectUser));
@@ -186,8 +188,9 @@ export function ProjectDetailsPage() {
       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser)) ?? [];
   const visibleNotes = notes.filter((note) => currentProjectUserIds.has(note.userId));
   const ownNote = user ? visibleNotes.find((note) => note.userId === user.uid) : undefined;
-  const visibleTasks = canDelete ? tasks : [];
-  const canViewProjectContent = canDelete || isProjectLeader || isProjectUser;
+  const visibleTasks = tasks;
+  const canViewProjectContent = canDelete || isProjectLeader || isProjectUser || hasAssignedProjectTask;
+  const isCheckingProjectTaskAccess = Boolean(project && user && !canViewProjectContent && !tasksLoaded);
   const normalizedTaskEditUserSearch = taskEditUserSearch.trim().toLowerCase();
   const filteredTaskEditUsers = normalizedTaskEditUserSearch
     ? taskAssignableUsers.filter((projectUser) =>
@@ -285,22 +288,29 @@ export function ProjectDetailsPage() {
   }, [canViewNotes, project, t, user]);
 
   useEffect(() => {
-    if (!project || !user || !canDelete) {
+    if (!project || !user) {
       setTasks([]);
+      setTasksLoaded(false);
       return;
     }
 
     let active = true;
+    const canViewAllLoadedTasks = canManageProjects(user.role) || project.leaderId === user.uid;
 
     const loadTasks = async () => {
       setTasksLoading(true);
+      setTasksLoaded(false);
       setTaskError(null);
 
       try {
         const loadedTasks = await getProjectTasks(project.id);
 
         if (active) {
-          setTasks(loadedTasks);
+          setTasks(
+            canViewAllLoadedTasks
+              ? loadedTasks
+              : loadedTasks.filter((task) => task.userIds.includes(user.uid)),
+          );
         }
       } catch (projectTaskError) {
         if (active) {
@@ -309,6 +319,7 @@ export function ProjectDetailsPage() {
       } finally {
         if (active) {
           setTasksLoading(false);
+          setTasksLoaded(true);
         }
       }
     };
@@ -318,7 +329,7 @@ export function ProjectDetailsPage() {
     return () => {
       active = false;
     };
-  }, [canDelete, project, t, user]);
+  }, [project, t, user]);
 
   useEffect(() => {
     if (!canWriteNote) {
@@ -498,7 +509,7 @@ export function ProjectDetailsPage() {
     setTaskError(null);
 
     try {
-      await updateProjectTask(project.id, task.id, {
+      const taskTimestamps = await updateProjectTask(project.id, task.id, {
         title: task.title,
         description: task.description,
         status: nextStatus,
@@ -508,7 +519,7 @@ export function ProjectDetailsPage() {
       setTasks((currentTasks) =>
         currentTasks.map((currentTask) =>
           currentTask.id === task.id
-            ? { ...currentTask, status: nextStatus, updatedAtMs: Date.now() }
+            ? { ...currentTask, status: nextStatus, ...taskTimestamps }
             : currentTask,
         ),
       );
@@ -599,12 +610,12 @@ export function ProjectDetailsPage() {
         userIds: selectedAssignableUserIds,
       };
 
-      await updateProjectTask(project.id, task.id, update);
+      const taskTimestamps = await updateProjectTask(project.id, task.id, update);
 
       setTasks((currentTasks) =>
         currentTasks.map((currentTask) =>
           currentTask.id === task.id
-            ? { ...currentTask, ...update, updatedAtMs: Date.now() }
+            ? { ...currentTask, ...update, ...taskTimestamps }
             : currentTask,
         ),
       );
@@ -760,15 +771,17 @@ export function ProjectDetailsPage() {
             )}
           </section>
 
-          {canDelete ? (
+          {canViewProjectContent ? (
             <section className="project-tasks-panel">
               <SectionHeader
                 actions={
                   <div className="project-section-actions">
                     <Badge variant="secondary">{visibleTasks.length}</Badge>
-                    <Link className={buttonVariants({ size: "sm" })} href={`/projects/${project.id}/tasks/new`}>
-                      {t("createTask")}
-                    </Link>
+                    {canDelete ? (
+                      <Link className={buttonVariants({ size: "sm" })} href={`/projects/${project.id}/tasks/new`}>
+                        {t("createTask")}
+                      </Link>
+                    ) : null}
                   </div>
                 }
                 eyebrow={t("tasks")}
@@ -784,6 +797,7 @@ export function ProjectDetailsPage() {
                     const assignedUsers = task.userIds
                       .map((taskUserId) => users.find((projectUser) => projectUser.uid === taskUserId))
                       .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
+                    const canUpdateTask = canDelete || Boolean(user && task.userIds.includes(user.uid));
 
                     return (
                       <article className="project-task-item" key={task.id}>
@@ -796,7 +810,7 @@ export function ProjectDetailsPage() {
                             <span>{task.deadline || t("noDeadline")}</span>
                             <Select
                               className={`status-select status-select-${task.status}`}
-                              disabled={taskStatusSavingId === task.id}
+                              disabled={taskStatusSavingId === task.id || !canUpdateTask}
                               onChange={(event) => void handleTaskStatusChange(task, event.target.value)}
                               value={task.status}
                             >
@@ -821,14 +835,16 @@ export function ProjectDetailsPage() {
                             <span className="project-users-note">{t("noUserAssigned")}</span>
                           )}
                         </div>
-                        <div className="project-task-card-actions">
-                          <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => startEditingTask(task)} size="sm" type="button" variant="secondary">
-                            {t("edit")}
-                          </Button>
-                          <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => setConfirmingTaskDelete(task)} size="sm" type="button" variant="destructive">
-                            {taskDeletingId === task.id ? t("deletingTask") : t("deleteTask")}
-                          </Button>
-                        </div>
+                        {canDelete ? (
+                          <div className="project-task-card-actions">
+                            <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => startEditingTask(task)} size="sm" type="button" variant="secondary">
+                              {t("edit")}
+                            </Button>
+                            <Button disabled={Boolean(taskSavingId) || Boolean(taskDeletingId)} onClick={() => setConfirmingTaskDelete(task)} size="sm" type="button" variant="destructive">
+                              {taskDeletingId === task.id ? t("deletingTask") : t("deleteTask")}
+                            </Button>
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}
@@ -1071,7 +1087,8 @@ export function ProjectDetailsPage() {
         </Card>
       ) : null}
 
-      {!loading && project && !canViewProjectContent ? <section className="empty-state">{t("noTasks")}</section> : null}
+      {!loading && project && isCheckingProjectTaskAccess ? <section className="empty-state">{t("loadingTasks")}</section> : null}
+      {!loading && project && !canViewProjectContent && !isCheckingProjectTaskAccess ? <section className="empty-state">{t("noTasks")}</section> : null}
       {!loading && !project && !error ? <section className="empty-state">{t("projectMissing")}</section> : null}
 
       <Dialog open={Boolean(editingTask && canDelete)}>

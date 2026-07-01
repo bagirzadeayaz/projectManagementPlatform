@@ -40,6 +40,24 @@ export type UserPreferences = {
 
 const emailUnverifiedStatus = "email-unverified";
 const maxProfilePictureBytes = 3 * 1024 * 1024;
+const authOperationTimeoutMs = 20000;
+
+function signOutSilently() {
+  void signOut(auth).catch(() => undefined);
+}
+
+function withAuthTimeout<Result>(operation: Promise<Result>) {
+  return new Promise<Result>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error("auth/operation-timeout"));
+    }, authOperationTimeoutMs);
+
+    operation
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeoutId));
+  });
+}
 
 function getFirebaseErrorCode(error: unknown) {
   return typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
@@ -129,7 +147,7 @@ async function toDbUser(
     name: readString(data.name),
     photoURL: readString(data.photoURL),
     role: role.role,
-    status: readString(data.status, "approved"),
+    status: readString(data.status, emailUnverifiedStatus),
     roleId: readString(data.roleId) || undefined,
     preferences: readPreferences(data.preferences),
   };
@@ -158,16 +176,21 @@ async function getApprovedProfile(user: User, fallbackEmail: string) {
   const profile = await findUserProfile(user.uid, user.email ?? fallbackEmail);
 
   if (!profile) {
-    await signOut(auth);
+    signOutSilently();
     throw new Error("User profile was not found in the database.");
   }
 
-  if (profile.status === emailUnverifiedStatus || profile.status === "pending") {
-    if (!user.emailVerified) {
-      await signOut(auth);
-      throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
-    }
+  if (profile.status === "denied") {
+    signOutSilently();
+    throw new Error("The account request was denied.");
+  }
 
+  if (!user.emailVerified) {
+    signOutSilently();
+    throw new Error("Verify your email address to complete registration. Check your inbox for the Firebase verification email.");
+  }
+
+  if (profile.status === emailUnverifiedStatus || profile.status === "pending") {
     await updateDoc(doc(db, "users", profile.docId), {
       status: "approved",
       emailVerified: true,
@@ -178,11 +201,6 @@ async function getApprovedProfile(user: User, fallbackEmail: string) {
       ...profile,
       status: "approved",
     };
-  }
-
-  if (profile.status === "denied") {
-    await signOut(auth);
-    throw new Error("The account request was denied.");
   }
 
   return profile;
@@ -210,7 +228,7 @@ export function observeAuthProfile(
 export async function loginWithEmail({ email, password }: AuthCredentials) {
   await useMemoryAuthPersistence();
 
-  const credential = await signInWithEmailAndPassword(auth, email, password);
+  const credential = await withAuthTimeout(signInWithEmailAndPassword(auth, email, password));
   return getApprovedProfile(credential.user, email);
 }
 
@@ -221,7 +239,7 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
   let credential: Awaited<ReturnType<typeof createUserWithEmailAndPassword>>;
 
   try {
-    credential = await createUserWithEmailAndPassword(auth, email, password);
+    credential = await withAuthTimeout(createUserWithEmailAndPassword(auth, email, password));
   } catch (registerError) {
     if (getFirebaseErrorCode(registerError) !== "auth/email-already-in-use") {
       throw registerError;
@@ -257,19 +275,19 @@ export async function registerWithEmail({ email, password, name }: AuthCredentia
     createdAt: serverTimestamp(),
   });
 
-  await sendEmailVerification(user);
+  await withAuthTimeout(sendEmailVerification(user));
 
-  await signOut(auth);
+  signOutSilently();
   throw new Error(getVerificationSentMessage(normalizedLanguage));
 }
 
 export async function resetPassword(email: string) {
   await useMemoryAuthPersistence();
-  return sendPasswordResetEmail(auth, email);
+  return withAuthTimeout(sendPasswordResetEmail(auth, email));
 }
 
 async function sendNewRegistrationVerification({ email, password, name }: AuthCredentials, language: Language) {
-  const credential = await signInWithEmailAndPassword(auth, email, password);
+  const credential = await withAuthTimeout(signInWithEmailAndPassword(auth, email, password));
   const user = credential.user;
   const displayName = name?.trim() ?? "";
   await user.reload();
@@ -285,7 +303,7 @@ async function sendNewRegistrationVerification({ email, password, name }: AuthCr
       });
     }
 
-    await signOut(auth);
+    signOutSilently();
     throw new Error(
       language === "az"
         ? "E-poçt artıq təsdiqlənib. Hesaba daxil ola bilərsiniz."
@@ -296,7 +314,7 @@ async function sendNewRegistrationVerification({ email, password, name }: AuthCr
   const profile = await findUserProfile(user.uid, user.email ?? email);
 
   if (profile?.status === "denied") {
-    await signOut(auth);
+    signOutSilently();
     throw new Error(language === "az" ? "Hesab sorğusu rədd edilib." : "The account request was denied.");
   }
 
@@ -320,9 +338,9 @@ async function sendNewRegistrationVerification({ email, password, name }: AuthCr
   }, { merge: true });
 
   try {
-    await sendEmailVerification(user);
+    await withAuthTimeout(sendEmailVerification(user));
   } finally {
-    await signOut(auth);
+    signOutSilently();
   }
 
   throw new Error(getVerificationSentMessage(language));

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "../hooks/useAuth";
@@ -14,6 +14,14 @@ import { SignOutConfirmDialog } from "./SignOutConfirmDialog";
 import { Tabs, TabsTrigger } from "./ui/tabs";
 
 type AuthMode = "login" | "register";
+const registerCooldownMs = 15000;
+const registerThrottleCooldownMs = 60000;
+
+function isAuthThrottleError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+
+  return message.includes("auth/too-many-requests") || message.includes("auth/operation-timeout");
+}
 
 function getHomePath(role?: string) {
   return role && isAdminRole(role) ? "/statistics" : "/projects";
@@ -32,10 +40,42 @@ export function AuthForm() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [localBusy, setLocalBusy] = useState(false);
+  const [registerCooldownUntil, setRegisterCooldownUntil] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const actionInFlightRef = useRef(false);
 
   const isRegistering = mode === "register";
+  const registerCooldownMsRemaining = Math.max(0, registerCooldownUntil - nowMs);
+  const registerCooldownSeconds = Math.ceil(registerCooldownMsRemaining / 1000);
+  const isRegisterCoolingDown = isRegistering && registerCooldownMsRemaining > 0;
+  const actionBusy = busy || localBusy || isRegisterCoolingDown;
+
+  useEffect(() => {
+    if (!registerCooldownUntil) {
+      return;
+    }
+
+    setNowMs(Date.now());
+
+    const cooldownTimer = window.setInterval(() => {
+      const nextNowMs = Date.now();
+
+      setNowMs(nextNowMs);
+
+      if (nextNowMs >= registerCooldownUntil) {
+        setRegisterCooldownUntil(0);
+      }
+    }, 500);
+
+    return () => window.clearInterval(cooldownTimer);
+  }, [registerCooldownUntil]);
 
   const switchMode = (nextMode: AuthMode) => {
+    if (busy || localBusy) {
+      return;
+    }
+
     setMode(nextMode);
     setPasswordError(null);
     setNotice(null);
@@ -44,6 +84,15 @@ export function AuthForm() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (actionInFlightRef.current || busy) {
+      return;
+    }
+
+    if (isRegisterCoolingDown) {
+      return;
+    }
+
     setNotice(null);
     setPasswordError(null);
 
@@ -52,8 +101,13 @@ export function AuthForm() {
       return;
     }
 
+    actionInFlightRef.current = true;
+    setLocalBusy(true);
+
     try {
       if (isRegistering) {
+        setRegisterCooldownUntil(Date.now() + registerCooldownMs);
+
         const credentials = {
           email: registerEmail.trim(),
           password: registerPassword,
@@ -71,22 +125,39 @@ export function AuthForm() {
         const profile = await login(credentials);
         router.push(getHomePath(profile?.role));
       }
-    } catch {
+    } catch (authError) {
+      if (isRegistering && isAuthThrottleError(authError)) {
+        setRegisterCooldownUntil(Date.now() + registerThrottleCooldownMs);
+      }
+
       // The hook already formats and stores the visible error.
+    } finally {
+      actionInFlightRef.current = false;
+      setLocalBusy(false);
     }
   };
 
   const handlePasswordReset = async () => {
+    if (actionInFlightRef.current || busy) {
+      return;
+    }
+
     if (!loginEmail.trim()) {
       setNotice(t("enterEmailFirst"));
       return;
     }
+
+    actionInFlightRef.current = true;
+    setLocalBusy(true);
 
     try {
       await sendResetEmail(loginEmail.trim());
       setNotice(t("passwordResetSent"));
     } catch {
       // The hook already formats and stores the visible error.
+    } finally {
+      actionInFlightRef.current = false;
+      setLocalBusy(false);
     }
   };
 
@@ -136,6 +207,7 @@ export function AuthForm() {
           <TabsTrigger
             aria-selected={!isRegistering}
             className="auth-tab"
+            disabled={busy || localBusy}
             onClick={() => switchMode("login")}
           >
             {t("login")}
@@ -143,6 +215,7 @@ export function AuthForm() {
           <TabsTrigger
             aria-selected={isRegistering}
             className="auth-tab"
+            disabled={busy || localBusy}
             onClick={() => switchMode("register")}
           >
             {t("register")}
@@ -208,15 +281,22 @@ export function AuthForm() {
           {error ? <Alert variant="destructive">{error}</Alert> : null}
           {passwordError ? <Alert variant="destructive">{passwordError}</Alert> : null}
           {notice ? <Alert variant="success">{notice}</Alert> : null}
+          {isRegisterCoolingDown ? (
+            <div className="auth-cooldown" aria-live="polite">
+              {t("registerCooldownCopy", { seconds: registerCooldownSeconds })}
+            </div>
+          ) : null}
 
-          <Button disabled={busy} type="submit">
-            {busy ? t("loading") : isRegistering ? t("createAccount") : t("login")}
+          <Button disabled={actionBusy} type="submit">
+            {busy || localBusy
+              ? t("loading")
+              : isRegistering ? t("createAccount") : t("login")}
           </Button>
         </form>
 
         <div className="auth-secondary-actions">
           {!isRegistering ? (
-            <Button className="auth-link-button" disabled={busy} onClick={handlePasswordReset} type="button" variant="link">
+            <Button className="auth-link-button" disabled={actionBusy} onClick={handlePasswordReset} type="button" variant="link">
               {t("forgotPassword")}
             </Button>
           ) : null}

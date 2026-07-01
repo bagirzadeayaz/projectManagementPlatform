@@ -35,11 +35,12 @@ export type ProjectTask = {
   userIds: string[];
   createdBy: string;
   createdAtMs: number;
+  statusChangedAtMs: number;
   updatedAtMs: number;
 };
 
 export type NewProjectNote = Omit<ProjectNote, "id" | "projectId" | "createdAtMs" | "updatedAtMs">;
-export type NewProjectTask = Omit<ProjectTask, "id" | "projectId" | "createdAtMs" | "updatedAtMs">;
+export type NewProjectTask = Omit<ProjectTask, "id" | "projectId" | "createdAtMs" | "statusChangedAtMs" | "updatedAtMs">;
 export type ProjectTaskUpdate = Pick<ProjectTask, "title" | "description" | "status" | "deadline" | "userIds">;
 
 export type ProjectUpdate = Pick<Project, "name" | "description" | "status" | "deadline">;
@@ -69,7 +70,7 @@ function readStringArray(value: unknown) {
 }
 
 function readTimestampMs(value: unknown, fallback = 0) {
-  if (typeof value === "number") {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
     return value;
   }
 
@@ -121,6 +122,10 @@ function toProjectTask(projectId: string, taskId: string, data: Record<string, u
     userIds: readStringArray(data.userIds),
     createdBy: readString(data.createdBy),
     createdAtMs: readTimestampMs(data.createdAtMs),
+    statusChangedAtMs: readTimestampMs(
+      data.statusChangedAtMs,
+      readTimestampMs(data.updatedAtMs, readTimestampMs(data.createdAtMs)),
+    ),
     updatedAtMs: readTimestampMs(data.updatedAtMs, readTimestampMs(data.createdAtMs)),
   };
 }
@@ -193,6 +198,8 @@ export async function addProjectTask(projectId: string, task: NewProjectTask) {
     ...task,
     createdAt: serverTimestamp(),
     createdAtMs: nowMs,
+    statusChangedAt: serverTimestamp(),
+    statusChangedAtMs: nowMs,
     updatedAt: serverTimestamp(),
     updatedAtMs: nowMs,
   });
@@ -201,6 +208,7 @@ export async function addProjectTask(projectId: string, task: NewProjectTask) {
     id: taskRef.id,
     projectId,
     createdAtMs: nowMs,
+    statusChangedAtMs: nowMs,
     updatedAtMs: nowMs,
     ...task,
   };
@@ -208,12 +216,27 @@ export async function addProjectTask(projectId: string, task: NewProjectTask) {
 
 export async function updateProjectTask(projectId: string, taskId: string, update: ProjectTaskUpdate) {
   const nowMs = Date.now();
+  const taskRef = doc(db, "projects", projectId, "tasks", taskId);
+  const taskSnapshot = await getDoc(taskRef);
+  const previousStatus = taskSnapshot.exists() ? readString(taskSnapshot.data().status, "planned") : "";
+  const statusChanged = previousStatus !== update.status;
+  const statusChangedAtMs = statusChanged
+    ? nowMs
+    : taskSnapshot.exists()
+      ? readTimestampMs(taskSnapshot.data().statusChangedAtMs, readTimestampMs(taskSnapshot.data().updatedAtMs, nowMs))
+      : nowMs;
 
-  await updateDoc(doc(db, "projects", projectId, "tasks", taskId), {
+  await updateDoc(taskRef, {
     ...update,
+    ...(statusChanged ? { statusChangedAt: serverTimestamp(), statusChangedAtMs } : {}),
     updatedAt: serverTimestamp(),
     updatedAtMs: nowMs,
   });
+
+  return {
+    statusChangedAtMs,
+    updatedAtMs: nowMs,
+  };
 }
 
 export async function deleteProjectTask(projectId: string, taskId: string) {

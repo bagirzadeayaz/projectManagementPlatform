@@ -47,6 +47,11 @@ function AppSidebar() {
             label: t("projects"),
           },
           {
+            href: "/archive",
+            isActive: pathname.startsWith("/archive"),
+            label: t("archive"),
+          },
+          {
             href: "/registrations",
             isActive: pathname.startsWith("/registrations"),
             label: t("appUsers"),
@@ -57,6 +62,11 @@ function AppSidebar() {
             href: "/projects",
             isActive: pathname === "/projects",
             label: t("myTasks"),
+          },
+          {
+            href: "/archive",
+            isActive: pathname.startsWith("/archive"),
+            label: t("archive"),
           },
           {
             href: "/myprojects",

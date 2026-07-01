@@ -128,11 +128,11 @@ export function useProjects(enabled = true) {
         userIds: currentTask.userIds,
       };
 
-      await updateProjectTask(projectId, taskId, update);
+      const taskTimestamps = await updateProjectTask(projectId, taskId, update);
       setTasksByProjectId((currentTasksByProjectId) => ({
         ...currentTasksByProjectId,
         [projectId]: (currentTasksByProjectId[projectId] ?? []).map((task) =>
-          task.id === taskId ? { ...task, status } : task,
+          task.id === taskId ? { ...task, status, ...taskTimestamps } : task,
         ),
       }));
     } catch (projectsError) {

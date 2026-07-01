@@ -24,13 +24,14 @@ import { Separator } from "./ui/separator";
 import { Tabs, TabsTrigger } from "./ui/tabs";
 
 type ProjectSort = "deadline-asc" | "deadline-desc" | "name-asc" | "name-desc" | "status-asc";
-type ProjectsDashboardView = "all" | "mine" | "statistics";
+type ProjectsDashboardView = "all" | "mine" | "statistics" | "archive";
 type AdminStatisticsTab = "projects" | "tasks";
 type UserTaskItem = {
   canMove: boolean;
   project: Project;
   task: ProjectTask;
 };
+const archiveCompletedTaskAfterMs = 3 * 24 * 60 * 60 * 1000;
 
 function getUserDisplayName(projectUser: ProjectUser) {
   return projectUser.name || projectUser.email || "User";
@@ -72,6 +73,30 @@ function countProjects(projects: Project[], status: string) {
 
 function countTasks(tasks: ProjectTask[], status: string) {
   return tasks.filter((task) => getTaskProgressStatus(task.status) === status).length;
+}
+
+function isArchivedTask(task: ProjectTask, nowMs = Date.now()) {
+  const archiveDateMs = getTaskArchiveDateMs(task);
+
+  return getTaskProgressStatus(task.status) === "completed" && Boolean(archiveDateMs) && nowMs > archiveDateMs;
+}
+
+function getTaskArchiveDateMs(task: ProjectTask) {
+  const sourceDateMs = task.statusChangedAtMs || task.updatedAtMs || task.createdAtMs;
+
+  return sourceDateMs > 0 ? sourceDateMs + archiveCompletedTaskAfterMs : 0;
+}
+
+function formatTaskArchiveDate(timestampMs: number, language: string) {
+  if (!timestampMs) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(language, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(timestampMs));
 }
 
 function getPercent(value: number, total: number) {
@@ -725,6 +750,80 @@ function UserTaskBoard({
   );
 }
 
+function ArchivedTaskList({
+  items,
+  onRestoreTask,
+  savingTaskId,
+  users,
+}: {
+  items: UserTaskItem[];
+  onRestoreTask: (projectId: string, taskId: string) => Promise<void>;
+  savingTaskId: string | null;
+  users: ProjectUser[];
+}) {
+  const { language, t } = useAuth();
+  const userById = new Map(users.map((projectUser) => [projectUser.uid, projectUser]));
+
+  return (
+    <section className="archive-task-list" aria-label={t("archivedTasks")}>
+      {items.map(({ project, task }) => {
+        const assignedUsers = task.userIds
+          .map((taskUserId) => userById.get(taskUserId))
+          .filter((projectUser): projectUser is ProjectUser => Boolean(projectUser));
+        const isRestoring = savingTaskId === task.id;
+
+        return (
+          <Card className="archive-task-card" key={`${project.id}-${task.id}`}>
+            <div className="archive-task-card-main">
+              <div className="task-board-card-header">
+                <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                <span>{formatTaskArchiveDate(task.statusChangedAtMs, language)}</span>
+              </div>
+              <h2>{task.title}</h2>
+              <p>{task.description || t("descriptionMissing")}</p>
+              <div className="task-board-assignees" aria-label={t("taskParticipants")}>
+                {assignedUsers.length > 0 ? (
+                  assignedUsers.map((taskUser) => (
+                    <span className="task-board-assignee" key={taskUser.uid}>
+                      <DashboardTaskAvatar projectUser={taskUser} />
+                      {getUserDisplayName(taskUser)}
+                    </span>
+                  ))
+                ) : (
+                  <span className="task-board-unassigned">{t("noUserAssigned")}</span>
+                )}
+              </div>
+            </div>
+            <footer>
+              <div>
+                <span>{t("project")}</span>
+                <strong>{project.name}</strong>
+              </div>
+              <div>
+                <span>{t("deadline")}</span>
+                <strong>{task.deadline || t("noDeadline")}</strong>
+              </div>
+              <div className="archive-task-actions">
+                <Button
+                  disabled={isRestoring}
+                  onClick={() => void onRestoreTask(project.id, task.id)}
+                  size="sm"
+                  type="button"
+                >
+                  {isRestoring ? t("restoringTask") : t("restoreTask")}
+                </Button>
+                <Link className={buttonVariants({ size: "sm", variant: "secondary" })} href={`/projects/${project.id}`}>
+                  {t("openDetails")}
+                </Link>
+              </div>
+            </footer>
+          </Card>
+        );
+      })}
+    </section>
+  );
+}
+
 export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardView }) {
   const { user, language, t } = useAuth();
   const { projects, tasksByProjectId, loading, error, refresh, saveTaskStatus, savingTaskId } = useProjects();
@@ -746,6 +845,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
   const canEdit = canEditProjects(user.role);
   const isMyProjectsView = view === "mine";
+  const isArchiveView = view === "archive";
   const isStatisticsView = view === "statistics";
   const isAdminStatisticsView = canEdit && isStatisticsView;
   const canSeeAllProjectTasks = (project: Project) => canEdit || project.leaderId === user.uid;
@@ -757,18 +857,29 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     ? projects
     : projects.filter(canAccessProjectTasks);
   const selectedProjectParam = searchParams.get("projectId") ?? "all";
-  const projectFilterId = !canEdit && visibleProjects.some((project) => project.id === selectedProjectParam)
+  const projectFilterId = visibleProjects.some((project) => project.id === selectedProjectParam)
     ? selectedProjectParam
     : "all";
   const userProjectOptions = sortProjects(visibleProjects, "deadline-asc");
+  const nowMs = Date.now();
   const userTaskItems = visibleProjects.flatMap((project) =>
     (tasksByProjectId[project.id] ?? [])
       .filter((task) => canSeeAllProjectTasks(project) || task.userIds.includes(user.uid))
       .map((task) => ({ canMove: canEdit || task.userIds.includes(user.uid), project, task })),
   );
+  const archiveTaskItems = visibleProjects.flatMap((project) =>
+    (tasksByProjectId[project.id] ?? [])
+      .filter((task) => canEdit || task.userIds.includes(user.uid))
+      .map((task) => ({ canMove: false, project, task })),
+  );
   const scopedUserTaskItems = projectFilterId === "all"
     ? userTaskItems
     : userTaskItems.filter(({ project }) => project.id === projectFilterId);
+  const scopedArchiveTaskItems = projectFilterId === "all"
+    ? archiveTaskItems
+    : archiveTaskItems.filter(({ project }) => project.id === projectFilterId);
+  const activeScopedUserTaskItems = scopedUserTaskItems.filter(({ task }) => !isArchivedTask(task, nowMs));
+  const archivedScopedTaskItems = scopedArchiveTaskItems.filter(({ task }) => isArchivedTask(task, nowMs));
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredProjects = sortProjects(
     visibleProjects.filter((project) => {
@@ -781,13 +892,15 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
     }),
     projectSort,
   );
-  const filteredUserTaskItems = scopedUserTaskItems.filter(({ project, task }) => {
+  const matchesTaskSearch = ({ project, task }: UserTaskItem) => {
     if (!normalizedSearchQuery) {
       return true;
     }
 
     return `${project.name} ${task.title} ${task.description} ${task.status} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
-  });
+  };
+  const filteredUserTaskItems = activeScopedUserTaskItems.filter(matchesTaskSearch);
+  const filteredArchiveTaskItems = archivedScopedTaskItems.filter(matchesTaskSearch);
   const showingStatistics = isAdminStatisticsView;
   const handleUserProjectFilterChange = (nextProjectId: string) => {
     const nextSearchParams = new URLSearchParams(searchParams.toString());
@@ -805,20 +918,72 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
   return (
     <main className="projects-page">
       <PageHeader
-        eyebrow={isAdminStatisticsView ? t("statistics") : isMyProjectsView ? t("myProjects") : t("projects")}
+        eyebrow={isArchiveView ? t("archive") : isAdminStatisticsView ? t("statistics") : isMyProjectsView ? t("myProjects") : t("projects")}
         subtitle={
-          isAdminStatisticsView
+          isArchiveView
+            ? t("archiveSubtitle")
+            : isAdminStatisticsView
             ? t("adminStatisticsSubtitle")
             : canEdit
               ? isMyProjectsView ? t("myProjectsSubtitle") : t("projectsFirestoreSubtitle")
               : isMyProjectsView ? t("myProjectsSubtitle") : t("taskBoardSubtitle")
         }
-        title={isAdminStatisticsView ? t("statistics") : canEdit ? (isMyProjectsView ? t("myProjects") : t("projects")) : isMyProjectsView ? t("myProjects") : t("myTasks")}
+        title={isArchiveView ? t("archive") : isAdminStatisticsView ? t("statistics") : canEdit ? (isMyProjectsView ? t("myProjects") : t("projects")) : isMyProjectsView ? t("myProjects") : t("myTasks")}
       />
 
       {error ? <p className="auth-message auth-message-error">{error}</p> : null}
 
-      {!canEdit && isMyProjectsView ? (
+      {isArchiveView ? (
+        <>
+          <Card className="dashboard-control-panel">
+            <section className="project-toolbar">
+              <p>
+                {t("tasksShown", { count: filteredArchiveTaskItems.length })}
+              </p>
+              <Button disabled={loading} onClick={refresh} size="sm" type="button" variant="secondary">
+                {loading ? t("refreshing") : t("refresh")}
+              </Button>
+            </section>
+            <Separator />
+            <section className="project-filters" aria-label={`${t("projects")}, ${t("search")}`}>
+              <FieldLabel>
+                <span>{t("projects")}</span>
+                <Select onChange={(event) => handleUserProjectFilterChange(event.target.value)} value={projectFilterId}>
+                  <option value="all">{t("allProjects")}</option>
+                  {userProjectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel>
+                <span>{t("search")}</span>
+                <Input
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("searchTasks")}
+                  type="search"
+                  value={searchQuery}
+                />
+              </FieldLabel>
+            </section>
+          </Card>
+
+          {loading ? <section className="empty-state">{t("loadingTasks")}</section> : null}
+          {!loading && archivedScopedTaskItems.length === 0 ? <section className="empty-state">{t("noArchivedTasks")}</section> : null}
+          {!loading && archivedScopedTaskItems.length > 0 && filteredArchiveTaskItems.length === 0 ? (
+            <section className="empty-state">{t("noMatchingTasks")}</section>
+          ) : null}
+
+          <ArchivedTaskList
+            items={filteredArchiveTaskItems}
+            onRestoreTask={(projectId, taskId) => saveTaskStatus(projectId, taskId, "active")}
+            savingTaskId={savingTaskId}
+            users={users}
+          />
+        </>
+      ) : !canEdit && isMyProjectsView ? (
         <>
           <Card className="dashboard-control-panel">
             <section className="project-toolbar">
@@ -898,8 +1063,8 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
           {loading ? <section className="empty-state">{t("loadingTasks")}</section> : null}
           {!loading && visibleProjects.length === 0 ? <section className="empty-state">{t("noProjectsAssigned")}</section> : null}
-          {!loading && visibleProjects.length > 0 && scopedUserTaskItems.length === 0 ? <section className="empty-state">{t("noTasks")}</section> : null}
-          {!loading && scopedUserTaskItems.length > 0 && filteredUserTaskItems.length === 0 ? (
+          {!loading && visibleProjects.length > 0 && activeScopedUserTaskItems.length === 0 ? <section className="empty-state">{t("noTasks")}</section> : null}
+          {!loading && activeScopedUserTaskItems.length > 0 && filteredUserTaskItems.length === 0 ? (
             <section className="empty-state">{t("noMatchingTasks")}</section>
           ) : null}
           <UserTaskBoard

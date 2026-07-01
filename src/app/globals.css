@@ -4118,7 +4118,7 @@ a {
 
 .task-board-card-readonly,
 .task-board-card-readonly:active {
-  cursor: pointer;
+  cursor: not-allowed;
 }
 
 .task-board-card-drag-ready,
@@ -5451,6 +5451,81 @@ body {
   border-color: color-mix(in srgb, var(--app-accent) 24%, var(--app-border));
 }
 
+.archive-task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.archive-task-card {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+  padding: 10px;
+}
+
+.archive-task-card-main {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.archive-task-card h2 {
+  color: var(--app-text);
+  font-size: 0.98rem;
+  line-height: 1.2;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.archive-task-card p {
+  display: -webkit-box;
+  color: var(--app-text-muted);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.35;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.archive-task-card footer {
+  align-content: start;
+  background: var(--app-surface-subtle);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+}
+
+.archive-task-card footer span {
+  color: var(--app-text-muted);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.archive-task-card footer strong {
+  color: var(--app-text);
+  display: block;
+  font-size: 0.88rem;
+  margin-top: 1px;
+  overflow-wrap: anywhere;
+}
+
+.archive-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.archive-task-actions .ui-button,
+.archive-task-actions .ui-button-size-sm {
+  flex: 1 1 92px;
+}
+
 .task-board-card-drag-ready {
   box-shadow: var(--app-ring), var(--app-shadow-md);
 }
@@ -5598,6 +5673,10 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .archive-task-card {
+    grid-template-columns: 1fr;
+  }
+
   .admin-project-create-card,
   .project-toolbar {
     align-items: stretch;
@@ -5641,6 +5720,20 @@ body {
 .auth-form > .ui-button[type="submit"] {
   margin-top: 4px;
   width: 100%;
+}
+
+.auth-cooldown {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--app-accent) 9%, var(--app-surface)), var(--app-surface));
+  border: 1px solid color-mix(in srgb, var(--app-accent) 22%, var(--app-border));
+  border-radius: var(--app-radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 44%);
+  color: var(--app-text-muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding: 12px;
 }
 
 .auth-secondary-actions {

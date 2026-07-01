@@ -1595,6 +1595,38 @@ body {
   margin: 8px 0 0;
 }
 
+.admin-statistics-actions {
+  align-items: center;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: min(100%, 380px);
+  padding: 8px;
+}
+
+.admin-statistics-project-filter {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.admin-statistics-project-filter span {
+  color: var(--app-text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.admin-statistics-project-filter .ui-select,
+.admin-statistics-actions .ui-button-size-sm {
+  min-height: 40px;
+}
+
 .admin-stat-summary {
   margin-bottom: 0;
 }
@@ -3478,6 +3510,26 @@ a {
   color: var(--app-info);
 }
 
+.task-priority-badge,
+.task-priority-select {
+  font-weight: 800;
+}
+
+.task-priority-low {
+  background: var(--app-surface-muted);
+  color: var(--app-text-muted);
+}
+
+.task-priority-medium {
+  background: var(--app-warning-soft);
+  color: var(--app-warning);
+}
+
+.task-priority-high {
+  background: var(--app-accent-soft);
+  color: var(--app-accent-strong);
+}
+
 .admin-dashboard-tabs,
 .admin-statistics-subtabs {
   grid-template-columns: repeat(2, minmax(0, 150px));
@@ -3871,7 +3923,7 @@ a {
 .project-task-form-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) minmax(150px, 190px);
+  grid-template-columns: minmax(220px, 1.2fr) repeat(3, minmax(130px, 180px));
 }
 
 .project-task-form-footer {
@@ -3898,6 +3950,15 @@ a {
   display: flex;
   gap: 8px;
   justify-content: space-between;
+}
+
+.project-task-badges,
+.task-card-badges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
 }
 
 .project-task-item h3 {
@@ -3973,7 +4034,7 @@ a {
 }
 
 .project-task-edit-dialog .project-task-form-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .project-task-edit-dialog .project-task-form-grid .ui-field:first-child {
@@ -6189,6 +6250,13 @@ body {
   .project-note-item-footer {
     align-items: stretch;
     display: grid;
+  }
+
+  .admin-statistics-actions,
+  .admin-statistics-project-filter {
+    justify-content: stretch;
+    min-width: 0;
+    width: 100%;
   }
 
   .auth-card-signed-in .ui-card-content {

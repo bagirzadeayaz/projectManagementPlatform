@@ -17,7 +17,9 @@ import {
   saveProjectNote,
   getTodayDateInputValue,
   isPastDeadline,
+  isTaskDeadlineAfterProjectDeadline,
   PROJECT_STATUSES,
+  TASK_PRIORITIES,
   TASK_STATUSES,
   updateProject,
   updateProjectTask,
@@ -25,8 +27,9 @@ import {
   type ProjectNote,
   type ProjectTask,
 } from "../services/project.service";
+import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
 import type { ProjectUser } from "../services/user.service";
-import { getProjectStatusLabel } from "../utils/labels";
+import { getProjectStatusLabel, getTaskPriorityLabel } from "../utils/labels";
 import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader, SectionHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
@@ -48,6 +51,8 @@ function canManageProjects(role: string) {
 function isAssignableUser(projectUser: { role: string }) {
   return isAssignableRole(projectUser.role);
 }
+
+type AiResponseLanguage = "auto" | Language;
 
 function getStatusClass(status: string) {
   return `project-status project-status-${status.toLowerCase()}`;
@@ -129,6 +134,7 @@ export function ProjectDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
+  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("az");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [deadline, setDeadline] = useState("");
@@ -155,6 +161,7 @@ export function ProjectDetailsPage() {
   const [taskEditTitle, setTaskEditTitle] = useState("");
   const [taskEditDescription, setTaskEditDescription] = useState("");
   const [taskEditStatus, setTaskEditStatus] = useState("planned");
+  const [taskEditPriority, setTaskEditPriority] = useState("medium");
   const [taskEditDeadline, setTaskEditDeadline] = useState("");
   const [taskEditUserIds, setTaskEditUserIds] = useState<string[]>([]);
   const [taskEditUserSearch, setTaskEditUserSearch] = useState("");
@@ -356,6 +363,11 @@ export function ProjectDetailsPage() {
       return;
     }
 
+    if (canDelete && tasks.some((task) => isTaskDeadlineAfterProjectDeadline(task.deadline, deadline))) {
+      setDeadlineError(t("projectDeadlineBeforeTaskDeadline"));
+      return;
+    }
+
     const nextLeaderId = canDelete ? leaderId : project.leaderId;
     const selectedAssignableUserIds = userIds.filter((projectUserId) => assignableUserIds.has(projectUserId));
     const nextUserIds = Array.from(new Set(selectedAssignableUserIds));
@@ -397,7 +409,12 @@ export function ProjectDetailsPage() {
     setGenerationError(null);
 
     try {
-      const generatedDescription = await generateProjectDescription(name, descriptionMessage, language);
+      const generatedDescription = await generateProjectDescription(
+        name,
+        descriptionMessage,
+        language,
+        descriptionResponseLanguage,
+      );
       setDescription(generatedDescription);
     } catch (descriptionError) {
       setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
@@ -513,6 +530,7 @@ export function ProjectDetailsPage() {
         title: task.title,
         description: task.description,
         status: nextStatus,
+        priority: task.priority,
         deadline: task.deadline,
         userIds: task.userIds,
       });
@@ -536,6 +554,7 @@ export function ProjectDetailsPage() {
     setTaskEditTitle(task.title);
     setTaskEditDescription(task.description);
     setTaskEditStatus(TASK_STATUSES.includes(task.status as (typeof TASK_STATUSES)[number]) ? task.status : "active");
+    setTaskEditPriority(TASK_PRIORITIES.includes(task.priority as (typeof TASK_PRIORITIES)[number]) ? task.priority : "medium");
     setTaskEditDeadline(task.deadline);
     setTaskEditUserIds(task.userIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId)));
     setTaskEditUserSearch("");
@@ -546,6 +565,7 @@ export function ProjectDetailsPage() {
     setTaskEditTitle("");
     setTaskEditDescription("");
     setTaskEditStatus("planned");
+    setTaskEditPriority("medium");
     setTaskEditDeadline("");
     setTaskEditUserIds([]);
     setTaskEditUserSearch("");
@@ -592,6 +612,11 @@ export function ProjectDetailsPage() {
       return;
     }
 
+    if (isTaskDeadlineAfterProjectDeadline(taskEditDeadline, project.deadline)) {
+      setTaskError(t("taskDeadlineAfterProjectDeadline"));
+      return;
+    }
+
     const selectedAssignableUserIds = taskEditUserIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId));
 
     if (selectedAssignableUserIds.length === 0) {
@@ -606,6 +631,7 @@ export function ProjectDetailsPage() {
         title: taskEditTitle.trim(),
         description: taskEditDescription.trim(),
         status: taskEditStatus,
+        priority: taskEditPriority,
         deadline: taskEditDeadline,
         userIds: selectedAssignableUserIds,
       };
@@ -803,7 +829,10 @@ export function ProjectDetailsPage() {
                       <article className="project-task-item" key={task.id}>
                         <div className="project-task-item-header">
                           <div>
-                            <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                            <div className="project-task-badges">
+                              <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                              <Badge className={`task-priority-badge task-priority-${task.priority}`}>{getTaskPriorityLabel(task.priority, language)}</Badge>
+                            </div>
                             <h3>{task.title}</h3>
                           </div>
                           <div className="project-task-item-actions">
@@ -1052,6 +1081,21 @@ export function ProjectDetailsPage() {
               </FieldLabel>
 
               <FieldLabel>
+                <span>{t("descriptionAiLanguage")}</span>
+                <Select
+                  onChange={(event) => setDescriptionResponseLanguage(event.target.value as AiResponseLanguage)}
+                  value={descriptionResponseLanguage}
+                >
+                  <option value="auto">{t("automatic")}</option>
+                  {supportedLanguages.map((supportedLanguage) => (
+                    <option key={supportedLanguage} value={supportedLanguage}>
+                      {languageNames[supportedLanguage]}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel>
                 <span className="field-label-row">
                   {t("description")}
                   <Button
@@ -1121,8 +1165,25 @@ export function ProjectDetailsPage() {
                   </Select>
                 </FieldLabel>
                 <FieldLabel>
+                  <span>{t("priority")}</span>
+                  <Select className={`task-priority-select task-priority-${taskEditPriority}`} onChange={(event) => setTaskEditPriority(event.target.value)} value={taskEditPriority}>
+                    {TASK_PRIORITIES.map((taskPriority) => (
+                      <option key={taskPriority} value={taskPriority}>
+                        {getTaskPriorityLabel(taskPriority, language)}
+                      </option>
+                    ))}
+                  </Select>
+                </FieldLabel>
+                <FieldLabel>
                   <span>{t("deadline")}</span>
-                  <Input min={minimumDeadline} onChange={(event) => setTaskEditDeadline(event.target.value)} required type="date" value={taskEditDeadline} />
+                  <Input
+                    max={project?.deadline || undefined}
+                    min={minimumDeadline}
+                    onChange={(event) => setTaskEditDeadline(event.target.value)}
+                    required
+                    type="date"
+                    value={taskEditDeadline}
+                  />
                 </FieldLabel>
               </div>
 

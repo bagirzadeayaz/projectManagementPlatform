@@ -12,10 +12,13 @@ import {
   getProject,
   getTodayDateInputValue,
   isPastDeadline,
+  isTaskDeadlineAfterProjectDeadline,
+  TASK_PRIORITIES,
   TASK_STATUSES,
   type Project,
 } from "../services/project.service";
-import { getProjectStatusLabel } from "../utils/labels";
+import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
+import { getProjectStatusLabel, getTaskPriorityLabel } from "../utils/labels";
 import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
@@ -36,6 +39,8 @@ function isAssignableUser(projectUser: { role: string }) {
   return isAssignableRole(projectUser.role);
 }
 
+type AiResponseLanguage = "auto" | Language;
+
 export function NewTaskPage() {
   const params = useParams<{ projectId?: string | string[] }>();
   const router = useRouter();
@@ -48,8 +53,10 @@ export function NewTaskPage() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
+  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("az");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
+  const [priority, setPriority] = useState("medium");
   const [deadline, setDeadline] = useState("");
   const [taskUserIds, setTaskUserIds] = useState<string[]>([]);
   const [userSearch, setUserSearch] = useState("");
@@ -129,7 +136,13 @@ export function NewTaskPage() {
     setGenerationError(null);
 
     try {
-      const generatedDescription = await generateTaskDescription(title, descriptionMessage, project?.name ?? "", language);
+      const generatedDescription = await generateTaskDescription(
+        title,
+        descriptionMessage,
+        project?.name ?? "",
+        language,
+        descriptionResponseLanguage,
+      );
       setDescription(generatedDescription);
     } catch (descriptionError) {
       setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
@@ -157,6 +170,11 @@ export function NewTaskPage() {
       return;
     }
 
+    if (isTaskDeadlineAfterProjectDeadline(deadline, project.deadline)) {
+      setError(t("taskDeadlineAfterProjectDeadline"));
+      return;
+    }
+
     const selectedAssignableUserIds = taskUserIds.filter((taskUserId) => taskAssignableUserIds.has(taskUserId));
 
     if (selectedAssignableUserIds.length === 0) {
@@ -171,6 +189,7 @@ export function NewTaskPage() {
         title: title.trim(),
         description: description.trim(),
         status,
+        priority,
         deadline,
         userIds: selectedAssignableUserIds,
         createdBy: user.uid,
@@ -236,8 +255,25 @@ export function NewTaskPage() {
               </Select>
             </FieldLabel>
             <FieldLabel>
+              <span>{t("priority")}</span>
+              <Select className={`task-priority-select task-priority-${priority}`} onChange={(event) => setPriority(event.target.value)} value={priority}>
+                {TASK_PRIORITIES.map((taskPriority) => (
+                  <option key={taskPriority} value={taskPriority}>
+                    {getTaskPriorityLabel(taskPriority, language)}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+            <FieldLabel>
               <span>{t("deadline")}</span>
-              <Input min={minimumDeadline} onChange={(event) => setDeadline(event.target.value)} type="date" value={deadline} required/>
+              <Input
+                max={project.deadline || undefined}
+                min={minimumDeadline}
+                onChange={(event) => setDeadline(event.target.value)}
+                type="date"
+                value={deadline}
+                required
+              />
             </FieldLabel>
           </div>
 
@@ -251,6 +287,21 @@ export function NewTaskPage() {
               value={descriptionMessage}
             />
             <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
+          </FieldLabel>
+
+          <FieldLabel>
+            <span>{t("descriptionAiLanguage")}</span>
+            <Select
+              onChange={(event) => setDescriptionResponseLanguage(event.target.value as AiResponseLanguage)}
+              value={descriptionResponseLanguage}
+            >
+              <option value="auto">{t("automatic")}</option>
+              {supportedLanguages.map((supportedLanguage) => (
+                <option key={supportedLanguage} value={supportedLanguage}>
+                  {languageNames[supportedLanguage]}
+                </option>
+              ))}
+            </Select>
           </FieldLabel>
 
           <FieldLabel>

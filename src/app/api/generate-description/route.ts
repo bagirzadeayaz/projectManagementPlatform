@@ -51,6 +51,10 @@ function cleanRequestedLanguage(value: unknown): DescriptionLanguage {
   return value === "az" ? "az" : "en";
 }
 
+function cleanForcedResponseLanguage(value: unknown): DescriptionLanguage | null {
+  return value === "az" || value === "en" ? value : null;
+}
+
 function cleanDescriptionType(value: unknown): DescriptionType {
   return value === "task" ? "task" : "project";
 }
@@ -196,7 +200,7 @@ async function generateWithAi(
 
     const normalizedDescription = normalizeDescription(description);
 
-    if (shouldRejectGeneratedDescription(normalizedDescription, language)) {
+    if (shouldRejectGeneratedDescription(normalizedDescription, language, title)) {
       previousRejectedDescription = true;
       continue;
     }
@@ -260,6 +264,8 @@ Task description requirements:
 - Include useful context from the parent project only when it makes the task clearer.
 - Avoid describing the whole project as if this were a project overview.
 - Avoid generic phrases such as "manage goals and timelines" unless the task specifically asks for them.
+- Do not begin with the exact taskTitle. Do not use a pattern like "[taskTitle] is..." or "[taskTitle] will...".
+- Start with the work, outcome, or user value instead of repeating the submitted name.
 
 Output requirements:
 - Return exactly one plain paragraph.
@@ -292,6 +298,13 @@ Language requirements:
 - If projectTitle and descriptionMessage use different languages, prioritize the language of projectTitle.
 - If the projectTitle language is unclear, use the descriptionMessage language.
 - If both languages are unclear, use the requested UI language: ${responseLanguage}.
+
+Project description requirements:
+- Describe the project purpose, users, workflow, and expected outcome.
+- Use concrete details from descriptionMessage when available.
+- Avoid generic phrases such as "manage goals and timelines" unless the project specifically asks for them.
+- Do not begin with the exact projectTitle. Do not use a pattern like "[projectTitle] is..." or "[projectTitle] will...".
+- Start with the capability, operational outcome, or user value instead of repeating the submitted name.
 
 Output requirements:
 - Return exactly one plain paragraph.
@@ -342,6 +355,51 @@ function normalizeForGuard(value: string) {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function hasInstructionLikeText(value: string) {
+  const normalizedValue = normalizeForGuard(value);
+
+  return [
+    /\b(ignore|forget|disregard|override|bypass|jailbreak)\b/,
+    /\b(previous|above|system|developer)\s+(instructions?|prompt|message|rules?)\b/,
+    /\b(reveal|show|print|leak|repeat)\b.*\b(prompt|instructions?|system|developer|secret|key|token)\b/,
+    /\b(return|respond|answer|output|write|generate|create|make|give me)\b.*\b(\d+\s*(characters?|chars?|tokens?|words?)|markdown|json|html|bullets?|paragraphs?)\b/,
+    /\b(exceed|exceeding|more than|at least|minimum|maximum|min|max|no less than|no more than)\b.*\b(characters?|chars?|tokens?|words?|length)\b/,
+    /\b\d+\s*(characters?|chars?|tokens?|words?)\s+(minimum|maximum|min|max)\b/,
+    /\b(as an ai|chatgpt|llm|language model)\b/,
+  ].some((pattern) => pattern.test(normalizedValue));
+}
+
+function cleanSupportingContext(value: string) {
+  const segments = value
+    .split(/(?<=[.!?])\s+|[\r\n]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .filter((segment) => !hasInstructionLikeText(segment));
+
+  return segments.join(" ").slice(0, descriptionMessageMaxCharacters).trim();
+}
+
+function normalizeForTitleEcho(value: string) {
+  return normalizeForGuard(value).replace(/[^\p{L}\p{N}\s-]+/gu, "").trim();
+}
+
+function startsByEchoingTitle(description: string, title: string) {
+  const normalizedTitle = normalizeForTitleEcho(title);
+  const normalizedDescription = normalizeForTitleEcho(description);
+
+  if (!normalizedTitle || normalizedTitle.length < 3) {
+    return false;
+  }
+
+  if (!normalizedDescription.startsWith(normalizedTitle)) {
+    return false;
+  }
+
+  const rest = normalizedDescription.slice(normalizedTitle.length).trim();
+
+  return !rest || /^(is|will|helps?|focuses?|aims?|provides?|supports?|creates?|delivers?|manages?|routes?|separates?)\b/.test(rest);
+}
+
 function detectLanguage(value: string): DescriptionLanguage | null {
   const normalizedValue = normalizeForGuard(value);
 
@@ -384,19 +442,10 @@ function shouldRejectTitle(title: string) {
     return true;
   }
 
-  return [
-    /\b(ignore|forget|disregard|override|bypass|jailbreak)\b/,
-    /\b(previous|above|system|developer)\s+(instructions?|prompt|message|rules?)\b/,
-    /\b(reveal|show|print|leak|repeat)\b.*\b(prompt|instructions?|system|developer|secret|key|token)\b/,
-    /\b(return|respond|answer|output|write|generate|create)\b.*\b(\d+\s*(characters?|chars?|tokens?|words?)|markdown|json|html|bullets?|paragraphs?)\b/,
-    /\b(exceed|exceeding|more than|at least|minimum|maximum)\b.*\b(characters?|chars?|tokens?|words?|length)\b/,
-    /\b(as an ai|chatgpt|llm|language model)\b/,
-  ].some((pattern) => pattern.test(normalizedTitle));
+  return hasInstructionLikeText(normalizedTitle);
 }
 
 function shouldRejectDescriptionMessage(descriptionMessage: string) {
-  const normalizedMessage = normalizeForGuard(descriptionMessage);
-
   if (!descriptionMessage) {
     return false;
   }
@@ -405,17 +454,12 @@ function shouldRejectDescriptionMessage(descriptionMessage: string) {
     return true;
   }
 
-  return [
-    /\b(ignore|forget|disregard|override|bypass|jailbreak)\b/,
-    /\b(previous|above|system|developer)\s+(instructions?|prompt|message|rules?)\b/,
-    /\b(reveal|show|print|leak|repeat)\b.*\b(prompt|instructions?|system|developer|secret|key|token)\b/,
-    /\b(return|respond|answer|output|write|generate|create)\b.*\b(\d+\s*(characters?|chars?|tokens?|words?)|markdown|json|html|bullets?|paragraphs?)\b/,
-    /\b(exceed|exceeding|more than|at least|minimum|maximum)\b.*\b(characters?|chars?|tokens?|words?|length)\b/,
-    /\b(as an ai|chatgpt|llm|language model)\b/,
-  ].some((pattern) => pattern.test(normalizedMessage));
+  const cleanedMessage = cleanSupportingContext(descriptionMessage);
+
+  return Boolean(!cleanedMessage && hasInstructionLikeText(descriptionMessage));
 }
 
-function shouldRejectGeneratedDescription(description: string, language: DescriptionLanguage = "en") {
+function shouldRejectGeneratedDescription(description: string, language: DescriptionLanguage = "en", title = "") {
   const normalizedDescription = normalizeForGuard(description);
 
   if (
@@ -423,6 +467,10 @@ function shouldRejectGeneratedDescription(description: string, language: Descrip
     normalizedDescription === normalizeForGuard(descriptionRejectMessages.en) ||
     normalizedDescription === normalizeForGuard(descriptionRejectMessages.az)
   ) {
+    return true;
+  }
+
+  if (startsByEchoingTitle(description, title)) {
     return true;
   }
 
@@ -434,7 +482,11 @@ function shouldRejectGeneratedDescription(description: string, language: Descrip
     /\b(system|developer)\s+(prompt|instructions?|message|rules?)\b/,
     /\b(ignore|forget|disregard|override|bypass|jailbreak)\b/,
     /\b(reveal|show|print|leak|repeat)\b.*\b(prompt|instructions?|system|developer|secret|key|token)\b/,
-    /\b(exceed|exceeding|more than|at least|minimum|maximum)\b.*\b(characters?|chars?|tokens?|words?|length)\b/,
+    /\b(return|respond|answer|output|write|generate|create|make|give me)\b.*\b(\d+\s*(characters?|chars?|tokens?|words?)|markdown|json|html|bullets?|paragraphs?)\b/,
+    /\b(exceed|exceeding|more than|at least|minimum|maximum|min|max|no less than|no more than)\b.*\b(characters?|chars?|tokens?|words?|length)\b/,
+    /\b\d+\s*(characters?|chars?|tokens?|words?)\s+(minimum|maximum|min|max)\b/,
+    /\blimited context\b/,
+    /\bprovides limited context\b/,
     /\b(as an ai|chatgpt|llm|language model)\b/,
   ].some((pattern) => pattern.test(normalizedDescription));
 }
@@ -446,7 +498,6 @@ function buildFallbackDescription(
   descriptionType: DescriptionType = "project",
   projectTitle = "",
 ) {
-  const normalizedTitle = normalizeDescription(title);
   const normalizedContext = normalizeDescription(descriptionMessage);
   const normalizedProjectTitle = normalizeDescription(projectTitle);
 
@@ -457,7 +508,7 @@ function buildFallbackDescription(
         ? ' Verilən məlumatlara əsasən icra addımları dəqiqləşdirilir, nəticə təhvilə hazırlanır və komanda ilə uyğunluq yoxlanılır.'
         : ' İcraçılar tələbləri dəqiqləşdirir, lazımi işi tamamlayır və nəticəni layihə məqsədləri ilə uyğun şəkildə təhvil verir.';
 
-      return clampDescription(normalizedTitle + ' tapşırığı' + projectContext + ' konkret nəticə yaratmaq üçün planlaşdırılır.' + contextSentence);
+      return clampDescription('Bu tapşırıq' + projectContext + ' konkret nəticə yaratmaq üçün planlaşdırılır.' + contextSentence);
     }
 
     const projectContext = normalizedProjectTitle ? ` within the ${normalizedProjectTitle} project` : "";
@@ -465,7 +516,7 @@ function buildFallbackDescription(
       ? " Based on the provided details, assignees should clarify requirements, complete the needed work, and prepare a usable outcome for review."
       : " Assignees should clarify requirements, complete the required work, and deliver an outcome that supports the project goals.";
 
-    return clampDescription(`${normalizedTitle} is a task${projectContext} focused on producing a concrete deliverable.${contextSentence}`);
+    return clampDescription(`This task${projectContext} focuses on producing a concrete deliverable.${contextSentence}`);
   }
 
   if (language === 'az') {
@@ -474,7 +525,7 @@ function buildFallbackDescription(
       : ' Komanda əsas məqsədləri müəyyənləşdirir, tapşırıqları planlaşdırır və nəticələri mərhələli şəkildə izləyir.';
 
     return clampDescription(
-      normalizedTitle + ' layihəsi məqsədləri, tapşırıqları və icra prosesini vahid şəkildə idarə etmək üçün nəzərdə tutulur.' + contextSentence,
+      'Bu layihə məqsədləri, tapşırıqları və icra prosesini vahid şəkildə idarə etmək üçün nəzərdə tutulur.' + contextSentence,
     );
   }
 
@@ -483,7 +534,7 @@ function buildFallbackDescription(
     : " The team can define core goals, plan tasks, and track outcomes step by step.";
 
   return clampDescription(
-    `${normalizedTitle} is designed to organize goals, responsibilities, and timelines in one project workspace.${contextSentence}`,
+    `This project is designed to organize goals, responsibilities, and timelines in one project workspace.${contextSentence}`,
   );
 }
 
@@ -873,19 +924,23 @@ export async function POST(request: Request) {
       language?: unknown;
       message?: unknown;
       projectTitle?: unknown;
+      responseLanguage?: unknown;
       taskTitle?: unknown;
       title?: unknown;
     };
     const descriptionType = cleanDescriptionType(body.descriptionType);
     const requestedLanguage = cleanRequestedLanguage(body.language);
+    const forcedResponseLanguage = cleanForcedResponseLanguage(body.responseLanguage);
     const title = cleanTitle(descriptionType === "task" ? body.taskTitle ?? body.title : body.title);
     const projectTitle = cleanTitle(body.projectTitle);
     const descriptionMessage = cleanDescriptionMessage(body.message);
+    const cleanedDescriptionMessage = cleanSupportingContext(descriptionMessage);
 
     responseLanguage =
-      descriptionType === "task"
-        ? getTaskResponseLanguage(title, descriptionMessage, projectTitle, requestedLanguage)
-        : getResponseLanguage(title, descriptionMessage, requestedLanguage);
+      forcedResponseLanguage ??
+      (descriptionType === "task"
+        ? getTaskResponseLanguage(title, cleanedDescriptionMessage, projectTitle, requestedLanguage)
+        : getResponseLanguage(title, cleanedDescriptionMessage, requestedLanguage));
 
     if (!title) {
       return NextResponse.json(
@@ -914,7 +969,13 @@ export async function POST(request: Request) {
       return createRejectResponse(responseLanguage);
     }
 
-    const description = await generateWithAi(title, descriptionMessage, responseLanguage, descriptionType, projectTitle);
+    const description = await generateWithAi(
+      title,
+      cleanedDescriptionMessage,
+      responseLanguage,
+      descriptionType,
+      projectTitle,
+    );
 
     if (!description) {
       return NextResponse.json(

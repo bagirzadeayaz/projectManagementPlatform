@@ -31,6 +31,7 @@ export type ProjectTask = {
   title: string;
   description: string;
   status: string;
+  priority: string;
   deadline: string;
   userIds: string[];
   createdBy: string;
@@ -41,7 +42,7 @@ export type ProjectTask = {
 
 export type NewProjectNote = Omit<ProjectNote, "id" | "projectId" | "createdAtMs" | "updatedAtMs">;
 export type NewProjectTask = Omit<ProjectTask, "id" | "projectId" | "createdAtMs" | "statusChangedAtMs" | "updatedAtMs">;
-export type ProjectTaskUpdate = Pick<ProjectTask, "title" | "description" | "status" | "deadline" | "userIds">;
+export type ProjectTaskUpdate = Pick<ProjectTask, "title" | "description" | "status" | "priority" | "deadline" | "userIds">;
 
 export type ProjectUpdate = Pick<Project, "name" | "description" | "status" | "deadline">;
 export type ProjectMemberUpdate = ProjectUpdate & Pick<Project, "leaderId" | "userIds">;
@@ -49,6 +50,7 @@ export type NewProject = ProjectMemberUpdate & Pick<Project, "leaderId">;
 
 export const PROJECT_STATUSES = ["planned", "active", "paused", "blocked", "completed"] as const;
 export const TASK_STATUSES = ["planned", "active", "completed"] as const;
+export const TASK_PRIORITIES = ["low", "medium", "high"] as const;
 
 export function getTodayDateInputValue() {
   const today = new Date();
@@ -59,6 +61,35 @@ export function getTodayDateInputValue() {
 
 export function isPastDeadline(deadline: string) {
   return Boolean(deadline) && deadline < getTodayDateInputValue();
+}
+
+export function isTaskDeadlineAfterProjectDeadline(taskDeadline: string, projectDeadline: string) {
+  return Boolean(taskDeadline && projectDeadline && taskDeadline > projectDeadline);
+}
+
+async function assertTaskDeadlineFitsProject(projectId: string, taskDeadline: string) {
+  const projectSnapshot = await getDoc(doc(db, "projects", projectId));
+
+  if (!projectSnapshot.exists()) {
+    throw new Error("Project not found.");
+  }
+
+  const projectDeadline = readString(projectSnapshot.data().deadline);
+
+  if (isTaskDeadlineAfterProjectDeadline(taskDeadline, projectDeadline)) {
+    throw new Error("Task deadline cannot be later than the project deadline.");
+  }
+}
+
+async function assertProjectDeadlineFitsTasks(projectId: string, projectDeadline: string) {
+  const taskSnapshot = await getDocs(collection(db, "projects", projectId, "tasks"));
+  const hasTaskAfterProjectDeadline = taskSnapshot.docs.some((taskDoc) =>
+    isTaskDeadlineAfterProjectDeadline(readString(taskDoc.data().deadline), projectDeadline),
+  );
+
+  if (hasTaskAfterProjectDeadline) {
+    throw new Error("Project deadline cannot be earlier than an existing task deadline.");
+  }
 }
 
 function readString(value: unknown, fallback = "") {
@@ -112,12 +143,15 @@ function toProjectNote(projectId: string, noteId: string, data: Record<string, u
 }
 
 function toProjectTask(projectId: string, taskId: string, data: Record<string, unknown>): ProjectTask {
+  const priority = readString(data.priority, "medium");
+
   return {
     id: taskId,
     projectId,
     title: readString(data.title, "Untitled task"),
     description: readString(data.description),
     status: readString(data.status, "planned"),
+    priority: TASK_PRIORITIES.includes(priority as (typeof TASK_PRIORITIES)[number]) ? priority : "medium",
     deadline: readString(data.deadline),
     userIds: readStringArray(data.userIds),
     createdBy: readString(data.createdBy),
@@ -149,6 +183,13 @@ export async function getProject(projectId: string) {
 }
 
 export async function updateProject(projectId: string, update: ProjectMemberUpdate) {
+  const projectSnapshot = await getDoc(doc(db, "projects", projectId));
+  const currentDeadline = projectSnapshot.exists() ? readString(projectSnapshot.data().deadline) : "";
+
+  if (update.deadline !== currentDeadline) {
+    await assertProjectDeadlineFitsTasks(projectId, update.deadline);
+  }
+
   await updateDoc(doc(db, "projects", projectId), {
     ...update,
     updatedAt: serverTimestamp(),
@@ -193,6 +234,8 @@ export async function getProjectTasks(projectId: string) {
 }
 
 export async function addProjectTask(projectId: string, task: NewProjectTask) {
+  await assertTaskDeadlineFitsProject(projectId, task.deadline);
+
   const nowMs = Date.now();
   const taskRef = await addDoc(collection(db, "projects", projectId, "tasks"), {
     ...task,
@@ -215,6 +258,8 @@ export async function addProjectTask(projectId: string, task: NewProjectTask) {
 }
 
 export async function updateProjectTask(projectId: string, taskId: string, update: ProjectTaskUpdate) {
+  await assertTaskDeadlineFitsProject(projectId, update.deadline);
+
   const nowMs = Date.now();
   const taskRef = doc(db, "projects", projectId, "tasks", taskId);
   const taskSnapshot = await getDoc(taskRef);
@@ -286,13 +331,13 @@ export async function deleteProjectNote(projectId: string, userId: string) {
   await deleteDoc(doc(db, "projects", projectId, "notes", userId));
 }
 
-export async function generateProjectDescription(title: string, message = "", language = "en") {
+export async function generateProjectDescription(title: string, message = "", language = "en", responseLanguage = "auto") {
   const response = await fetch("/api/generate-description", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ language, message, title }),
+    body: JSON.stringify({ language, message, responseLanguage, title }),
   });
 
   const data = (await response.json()) as { description?: string; error?: string };
@@ -304,7 +349,13 @@ export async function generateProjectDescription(title: string, message = "", la
   return data.description;
 }
 
-export async function generateTaskDescription(taskTitle: string, message = "", projectTitle = "", language = "en") {
+export async function generateTaskDescription(
+  taskTitle: string,
+  message = "",
+  projectTitle = "",
+  language = "en",
+  responseLanguage = "auto",
+) {
   const response = await fetch("/api/generate-description", {
     method: "POST",
     headers: {
@@ -315,6 +366,7 @@ export async function generateTaskDescription(taskTitle: string, message = "", p
       language,
       message,
       projectTitle,
+      responseLanguage,
       taskTitle,
     }),
   });

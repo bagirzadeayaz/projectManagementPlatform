@@ -18,6 +18,19 @@ const projectStatusLabels: Record<Language, Record<string, string>> = {
   },
 };
 
+const taskPriorityLabels: Record<Language, Record<string, string>> = {
+  en: {
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+  },
+  az: {
+    low: "Aşağı",
+    medium: "Orta",
+    high: "Yüksək",
+  },
+};
+
 const roleLabels: Record<Language, Record<string, string>> = {
   en: {
     admin: "Admin",
@@ -50,6 +63,10 @@ const userStatusLabels: Record<Language, Record<string, string>> = {
 
 export function getProjectStatusLabel(status: string, language: Language = "en") {
   return projectStatusLabels[language][status] ?? status;
+}
+
+export function getTaskPriorityLabel(priority: string, language: Language = "en") {
+  return taskPriorityLabels[language][priority] ?? taskPriorityLabels[language].medium;
 }
 
 export function getRoleLabel(role: string, language: Language = "en") {

@@ -124,6 +124,7 @@ export function useProjects(enabled = true) {
         title: currentTask.title,
         description: currentTask.description,
         status,
+        priority: currentTask.priority,
         deadline: currentTask.deadline,
         userIds: currentTask.userIds,
       };

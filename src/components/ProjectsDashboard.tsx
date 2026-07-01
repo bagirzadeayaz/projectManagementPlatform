@@ -9,7 +9,7 @@ import { useProjectUsers } from "../hooks/useProjectUsers";
 import { useProjects } from "../hooks/useProjects";
 import { PROJECT_STATUSES, TASK_STATUSES, type Project, type ProjectTask } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
-import { getProjectStatusLabel } from "../utils/labels";
+import { getProjectStatusLabel, getTaskPriorityLabel } from "../utils/labels";
 import { isAdminRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
 import { AuthForm } from "./AuthForm";
@@ -142,7 +142,7 @@ function sortProjects(projects: Project[], sort: ProjectSort) {
 function AdminStatistics({
   loading,
   onRefresh,
-  projects,
+  projects: availableProjects,
   tasksByProjectId,
 }: {
   loading: boolean;
@@ -152,7 +152,16 @@ function AdminStatistics({
 }) {
   const { language, t } = useAuth();
   const [statisticsTab, setStatisticsTab] = useState<AdminStatisticsTab>("projects");
-  const allTasks = projects.flatMap((project) => tasksByProjectId[project.id] ?? []);
+  const [selectedProjectId, setSelectedProjectId] = useState("all");
+  const selectedStatisticsProjectId = availableProjects.some((project) => project.id === selectedProjectId)
+    ? selectedProjectId
+    : "all";
+  const projectOptions = sortProjects(availableProjects, "deadline-asc");
+  const projects = availableProjects;
+  const taskProjects = selectedStatisticsProjectId === "all"
+    ? availableProjects
+    : availableProjects.filter((project) => project.id === selectedStatisticsProjectId);
+  const allTasks = taskProjects.flatMap((project) => tasksByProjectId[project.id] ?? []);
   const totalProjects = projects.length;
   const totalTasks = allTasks.length;
   const completedProjects = countProjects(projects, "completed");
@@ -258,9 +267,28 @@ function AdminStatistics({
           <h2>{statisticsTab === "projects" ? t("projectHealth") : t("taskHealth")}</h2>
           <p>{statisticsTab === "projects" ? t("adminStatisticsSubtitle") : t("taskStatisticsSubtitle")}</p>
         </div>
-        <Button disabled={loading} onClick={onRefresh} size="sm" type="button" variant="secondary">
-          {loading ? t("refreshing") : t("refresh")}
-        </Button>
+        {statisticsTab === "tasks" ? (
+          <div className="admin-statistics-actions">
+            <FieldLabel className="admin-statistics-project-filter">
+              <span>{t("projects")}</span>
+              <Select onChange={(event) => setSelectedProjectId(event.target.value)} value={selectedStatisticsProjectId}>
+                <option value="all">{t("allProjects")}</option>
+                {projectOptions.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </Select>
+            </FieldLabel>
+            <Button disabled={loading} onClick={onRefresh} size="sm" type="button" variant="secondary">
+              {loading ? t("refreshing") : t("refresh")}
+            </Button>
+          </div>
+        ) : (
+          <Button disabled={loading} onClick={onRefresh} size="sm" type="button" variant="secondary">
+            {loading ? t("refreshing") : t("refresh")}
+          </Button>
+        )}
       </div>
 
       <Tabs className="admin-statistics-subtabs" aria-label={t("statistics")}>
@@ -663,7 +691,10 @@ function UserTaskBoard({
                       }}
                     >
                       <div className="task-board-card-header">
-                        <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                        <div className="task-card-badges">
+                          <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                          <Badge className={`task-priority-badge task-priority-${task.priority}`}>{getTaskPriorityLabel(task.priority, language)}</Badge>
+                        </div>
                         {savingTaskId === task.id ? <span>{t("saving")}</span> : null}
                       </div>
                       <h3>{task.title}</h3>
@@ -708,7 +739,7 @@ function UserTaskBoard({
               <p className="auth-kicker">{selectedTaskItem.project.name}</p>
               <DialogTitle id={`task-details-${selectedTaskItem.task.id}`}>{selectedTaskItem.task.title}</DialogTitle>
               <DialogDescription>
-                {getProjectStatusLabel(selectedTaskItem.task.status, language)} - {selectedTaskItem.task.deadline || t("noDeadline")}
+                {getProjectStatusLabel(selectedTaskItem.task.status, language)} - {getTaskPriorityLabel(selectedTaskItem.task.priority, language)} - {selectedTaskItem.task.deadline || t("noDeadline")}
               </DialogDescription>
             </DialogHeader>
 
@@ -777,6 +808,7 @@ function ArchivedTaskList({
             <CardHeader className="archive-task-card-header">
               <div className="archive-task-card-kicker">
                 <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
+                <Badge className={`task-priority-badge task-priority-${task.priority}`}>{getTaskPriorityLabel(task.priority, language)}</Badge>
                 <span>{formatTaskArchiveDate(task.statusChangedAtMs, language)}</span>
               </div>
               <CardTitle>{task.title}</CardTitle>
@@ -901,7 +933,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
       return true;
     }
 
-    return `${project.name} ${task.title} ${task.description} ${task.status} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
+    return `${project.name} ${task.title} ${task.description} ${task.status} ${getTaskPriorityLabel(task.priority, language)} ${task.priority} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
   };
   const filteredUserTaskItems = activeScopedUserTaskItems.filter(matchesTaskSearch);
   const filteredArchiveTaskItems = archivedScopedTaskItems.filter(matchesTaskSearch);

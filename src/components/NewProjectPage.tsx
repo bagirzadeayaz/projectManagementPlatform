@@ -13,6 +13,7 @@ import {
   isPastDeadline,
   PROJECT_STATUSES,
 } from "../services/project.service";
+import { languageNames, supportedLanguages, type Language } from "../utils/i18n";
 import { getProjectStatusLabel } from "../utils/labels";
 import { isAdminRole, isAssignableRole } from "../utils/roles";
 import { PageHeader } from "./AppShell";
@@ -30,6 +31,8 @@ function isAssignableUser(projectUser: { role: string }) {
   return isAssignableRole(projectUser.role);
 }
 
+type AiResponseLanguage = "auto" | Language;
+
 export function NewProjectPage() {
   const router = useRouter();
   const { user, language, t } = useAuth();
@@ -37,6 +40,7 @@ export function NewProjectPage() {
   const { savingId, error, createProject } = useProjects();
   const [name, setName] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
+  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("az");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [deadline, setDeadline] = useState("");
@@ -139,7 +143,12 @@ export function NewProjectPage() {
     setGenerationError(null);
 
     try {
-      const generatedDescription = await generateProjectDescription(name, descriptionMessage, language);
+      const generatedDescription = await generateProjectDescription(
+        name,
+        descriptionMessage,
+        language,
+        descriptionResponseLanguage,
+      );
       setDescription(generatedDescription);
     } catch (descriptionError) {
       setGenerationError(descriptionError instanceof Error ? descriptionError.message : t("writeDescriptionFailed"));
@@ -249,6 +258,21 @@ export function NewProjectPage() {
             value={descriptionMessage}
           />
           <div className="char-count">{`${descriptionMessage.length}/1000`}</div>
+        </FieldLabel>
+
+        <FieldLabel>
+          <span>{t("descriptionAiLanguage")}</span>
+          <Select
+            onChange={(event) => setDescriptionResponseLanguage(event.target.value as AiResponseLanguage)}
+            value={descriptionResponseLanguage}
+          >
+            <option value="auto">{t("automatic")}</option>
+            {supportedLanguages.map((supportedLanguage) => (
+              <option key={supportedLanguage} value={supportedLanguage}>
+                {languageNames[supportedLanguage]}
+              </option>
+            ))}
+          </Select>
         </FieldLabel>
 
         <FieldLabel>

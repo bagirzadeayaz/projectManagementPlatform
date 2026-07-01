@@ -53,7 +53,7 @@ export function NewTaskPage() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
-  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("az");
+  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("auto");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [priority, setPriority] = useState("medium");

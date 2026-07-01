@@ -40,7 +40,7 @@ export function NewProjectPage() {
   const { savingId, error, createProject } = useProjects();
   const [name, setName] = useState("");
   const [descriptionMessage, setDescriptionMessage] = useState("");
-  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("az");
+  const [descriptionResponseLanguage, setDescriptionResponseLanguage] = useState<AiResponseLanguage>("auto");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
   const [deadline, setDeadline] = useState("");

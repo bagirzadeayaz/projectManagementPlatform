@@ -5865,6 +5865,17 @@ body {
   padding: 20px;
 }
 
+.admin-user-filters {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(240px, 1fr) minmax(160px, 220px);
+}
+
+.admin-user-filters .ui-field {
+  min-width: 0;
+}
+
 .admin-user-row-shell {
   align-items: center;
 }
@@ -5969,6 +5980,7 @@ body {
   .field-label-row,
   .project-task-item-header,
   .project-task-item-actions,
+  .admin-user-filters,
   .project-section-actions,
   .admin-user-row-actions {
     align-items: stretch;
@@ -5977,6 +5989,10 @@ body {
 
   .inline-ai-button {
     width: 100%;
+  }
+
+  .admin-user-filters {
+    grid-template-columns: 1fr;
   }
 }
 

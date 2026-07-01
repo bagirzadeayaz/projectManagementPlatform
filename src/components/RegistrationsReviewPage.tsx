@@ -96,6 +96,8 @@ function ActiveUsersPanel({
   const isCurrentUserSuperAdmin = isSuperAdminRole(currentUserRole);
   const panelLabel = isCurrentUserSuperAdmin ? t("superAdminPanel") : t("adminPanel");
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [editingUserId, setEditingUserId] = useState("");
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [confirmingDeleteUserId, setConfirmingDeleteUserId] = useState("");
@@ -109,6 +111,17 @@ function ActiveUsersPanel({
   const selectedUser = users.find((activeUser) => activeUser.uid === selectedUserId);
   const editingUser = users.find((activeUser) => activeUser.uid === editingUserId);
   const deleteTargetUser = users.find((activeUser) => activeUser.uid === confirmingDeleteUserId);
+  const normalizedUserSearch = userSearch.trim().toLowerCase();
+  const filteredUsers = users.filter((activeUser) => {
+    const normalizedUserRole = normalizeRole(activeUser.role);
+    const matchesRole = !roleFilter || normalizedUserRole === roleFilter;
+    const matchesSearch =
+      !normalizedUserSearch ||
+      activeUser.name.toLowerCase().includes(normalizedUserSearch) ||
+      activeUser.email.toLowerCase().includes(normalizedUserSearch);
+
+    return matchesRole && matchesSearch;
+  });
   const selectedUserProjects = selectedUser
     ? projects.filter((project) =>
         project.userIds.includes(selectedUser.uid) ||
@@ -217,23 +230,35 @@ function ActiveUsersPanel({
       </div>
       <Separator />
 
-      <FieldLabel>
-        <span>{t("user")}</span>
-        <Select onChange={(event) => setSelectedUserId(event.target.value)} value={selectedUserId}>
-          <option value="">{loading ? t("loading") : t("noUserSelected")}</option>
-          {users.map((activeUser) => (
-            <option key={activeUser.uid} value={activeUser.uid}>
-              {activeUser.name || activeUser.email} - {activeUser.email}
-            </option>
-          ))}
-        </Select>
-      </FieldLabel>
+      <div className="admin-user-filters">
+        <FieldLabel>
+          <span>{t("searchUsers")}</span>
+          <Input
+            onChange={(event) => setUserSearch(event.target.value)}
+            placeholder={t("searchUsersPlaceholder")}
+            type="search"
+            value={userSearch}
+          />
+        </FieldLabel>
+        <FieldLabel>
+          <span>{t("role")}</span>
+          <Select onChange={(event) => setRoleFilter(event.target.value)} value={roleFilter}>
+            <option value="">{t("allRoles")}</option>
+            <option value={userRole}>{getRoleLabel(userRole, language)}</option>
+            <option value={adminRole}>{getRoleLabel(adminRole, language)}</option>
+            <option value={superAdminRole}>{getRoleLabel(superAdminRole, language)}</option>
+          </Select>
+        </FieldLabel>
+      </div>
 
       {!loading && users.length === 0 ? <p className="project-users-note">{t("noActiveUsers")}</p> : null}
+      {!loading && users.length > 0 && filteredUsers.length === 0 ? (
+        <p className="project-users-note">{t("noMatchingUsers")}</p>
+      ) : null}
 
-      {!loading && users.length > 0 ? (
+      {!loading && filteredUsers.length > 0 ? (
         <div className="admin-users-roster">
-          {users.map((activeUser) => {
+          {filteredUsers.map((activeUser) => {
             const isSelected = activeUser.uid === selectedUserId;
             const canDeleteUser = canDeleteManagedUser(activeUser, currentUserId, currentUserRole);
 

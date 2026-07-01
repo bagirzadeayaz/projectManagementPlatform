@@ -774,12 +774,14 @@ function ArchivedTaskList({
 
         return (
           <Card className="archive-task-card" key={`${project.id}-${task.id}`}>
-            <div className="archive-task-card-main">
-              <div className="task-board-card-header">
+            <CardHeader className="archive-task-card-header">
+              <div className="archive-task-card-kicker">
                 <Badge className={getStatusClass(task.status)}>{getProjectStatusLabel(task.status, language)}</Badge>
                 <span>{formatTaskArchiveDate(task.statusChangedAtMs, language)}</span>
               </div>
-              <h2>{task.title}</h2>
+              <CardTitle>{task.title}</CardTitle>
+            </CardHeader>
+            <CardContent className="archive-task-card-content">
               <p>{task.description || t("descriptionMissing")}</p>
               <div className="task-board-assignees" aria-label={t("taskParticipants")}>
                 {assignedUsers.length > 0 ? (
@@ -793,15 +795,17 @@ function ArchivedTaskList({
                   <span className="task-board-unassigned">{t("noUserAssigned")}</span>
                 )}
               </div>
-            </div>
-            <footer>
-              <div>
-                <span>{t("project")}</span>
-                <strong>{project.name}</strong>
-              </div>
-              <div>
-                <span>{t("deadline")}</span>
-                <strong>{task.deadline || t("noDeadline")}</strong>
+            </CardContent>
+            <CardFooter className="archive-task-card-footer">
+              <div className="archive-task-meta">
+                <div>
+                  <span>{t("project")}</span>
+                  <strong>{project.name}</strong>
+                </div>
+                <div>
+                  <span>{t("deadline")}</span>
+                  <strong>{task.deadline || t("noDeadline")}</strong>
+                </div>
               </div>
               <div className="archive-task-actions">
                 <Button
@@ -816,7 +820,7 @@ function ArchivedTaskList({
                   {t("openDetails")}
                 </Link>
               </div>
-            </footer>
+            </CardFooter>
           </Card>
         );
       })}
@@ -935,17 +939,18 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
       {isArchiveView ? (
         <>
-          <Card className="dashboard-control-panel">
-            <section className="project-toolbar">
-              <p>
-                {t("tasksShown", { count: filteredArchiveTaskItems.length })}
-              </p>
+          <Card className="dashboard-control-panel archive-control-panel">
+            <CardHeader className="archive-control-header">
+              <div>
+                <p className="auth-kicker">{t("archivedTasks")}</p>
+                <CardTitle>{t("tasksShown", { count: filteredArchiveTaskItems.length })}</CardTitle>
+              </div>
               <Button disabled={loading} onClick={refresh} size="sm" type="button" variant="secondary">
                 {loading ? t("refreshing") : t("refresh")}
               </Button>
-            </section>
+            </CardHeader>
             <Separator />
-            <section className="project-filters" aria-label={`${t("projects")}, ${t("search")}`}>
+            <CardContent className="project-filters archive-control-content" aria-label={`${t("projects")}, ${t("search")}`}>
               <FieldLabel>
                 <span>{t("projects")}</span>
                 <Select onChange={(event) => handleUserProjectFilterChange(event.target.value)} value={projectFilterId}>
@@ -967,7 +972,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
                   value={searchQuery}
                 />
               </FieldLabel>
-            </section>
+            </CardContent>
           </Card>
 
           {loading ? <section className="empty-state">{t("loadingTasks")}</section> : null}

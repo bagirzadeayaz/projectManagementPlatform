@@ -5454,34 +5454,101 @@ body {
 .archive-task-list {
   display: grid;
   gap: 8px;
+  grid-template-columns: 1fr;
 }
 
 .archive-task-card {
   align-items: stretch;
+  border-color: color-mix(in srgb, var(--app-border) 88%, transparent);
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
-  padding: 10px;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 1.1fr) minmax(250px, 0.8fr);
+  overflow: hidden;
+  padding: 0;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
-.archive-task-card-main {
+.archive-task-card:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+  box-shadow: var(--app-shadow-md);
+  transform: translateY(-1px);
+}
+
+.archive-control-panel {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.archive-control-header {
+  align-items: center;
+  background: linear-gradient(135deg, var(--app-surface), var(--app-surface-subtle));
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.archive-control-header .ui-card-title {
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.archive-control-content {
+  padding: 16px;
+}
+
+.archive-task-card-header {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--app-accent) 8%, var(--app-surface)), var(--app-surface));
+  border-right: 1px solid var(--app-border);
   display: grid;
-  gap: 7px;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.archive-task-card-kicker {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
   min-width: 0;
 }
 
-.archive-task-card h2 {
+.archive-task-card-kicker > span:not(.ui-badge) {
+  color: var(--app-text-muted);
+  font-size: 0.78rem;
+  font-weight: 780;
+}
+
+.archive-task-card .ui-card-title {
   color: var(--app-text);
+  display: -webkit-box;
   font-size: 0.98rem;
-  line-height: 1.2;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
   margin: 0;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
-.archive-task-card p {
+.archive-task-card-content {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.archive-task-card-content p {
   display: -webkit-box;
   color: var(--app-text-muted);
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   line-height: 1.35;
   margin: 0;
@@ -5489,17 +5556,31 @@ body {
   overflow-wrap: anywhere;
 }
 
-.archive-task-card footer {
-  align-content: start;
+.archive-task-card-footer {
+  align-items: stretch;
   background: var(--app-surface-subtle);
-  border: 1px solid var(--app-border);
-  border-radius: var(--app-radius);
+  border-left: 1px solid var(--app-border);
   display: grid;
-  gap: 7px;
-  padding: 8px;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
 }
 
-.archive-task-card footer span {
+.archive-task-meta {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.archive-task-meta div {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: calc(var(--app-radius) - 2px);
+  min-width: 0;
+  padding: 7px 8px;
+}
+
+.archive-task-meta span {
   color: var(--app-text-muted);
   display: block;
   font-size: 0.7rem;
@@ -5507,7 +5588,7 @@ body {
   text-transform: uppercase;
 }
 
-.archive-task-card footer strong {
+.archive-task-meta strong {
   color: var(--app-text);
   display: block;
   font-size: 0.88rem;
@@ -5524,6 +5605,51 @@ body {
 .archive-task-actions .ui-button,
 .archive-task-actions .ui-button-size-sm {
   flex: 1 1 92px;
+  min-width: 0;
+}
+
+.ui-button:not(.ui-button-size-icon),
+.auth-tab,
+.admin-tab,
+.admin-dashboard-tabs button,
+.admin-statistics-subtabs button,
+.nav-link,
+.app-sidebar-link,
+.task-details-project-link {
+  line-height: 1.2;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
+}
+
+.ui-badge {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.project-toolbar,
+.project-section-actions,
+.admin-user-row-actions,
+.archive-task-actions {
+  min-width: 0;
+}
+
+.project-toolbar p,
+.project-section-actions,
+.admin-statistics-heading,
+.admin-visual-card,
+.dashboard-stat,
+.empty-state {
+  overflow-wrap: anywhere;
+}
+
+.project-filters .ui-field,
+.project-filters .ui-label,
+.project-filters .ui-input,
+.project-filters .ui-select {
+  min-width: 0;
 }
 
 .task-board-card-drag-ready {
@@ -5675,6 +5801,16 @@ body {
 
   .archive-task-card {
     grid-template-columns: 1fr;
+  }
+
+  .archive-task-card-header {
+    border-bottom: 1px solid var(--app-border);
+    border-right: 0;
+  }
+
+  .archive-task-card-footer {
+    border-left: 0;
+    border-top: 1px solid var(--app-border);
   }
 
   .admin-project-create-card,

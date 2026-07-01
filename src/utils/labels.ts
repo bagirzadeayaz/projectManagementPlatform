@@ -25,8 +25,8 @@ const roleLabels: Record<Language, Record<string, string>> = {
     user: "User",
   },
   az: {
-    "super-admin": "Super inzibatçı",
-    admin: "İnzibatçı",
+    "super-admin": "Super admin",
+    admin: "Admin",
     user: "İstifadəçi",
   },
 };

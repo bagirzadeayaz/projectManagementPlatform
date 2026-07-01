@@ -4,15 +4,12 @@ import { createContext, ReactNode, useContext, useEffect, useMemo, useState } fr
 
 import {
   type DbUser,
-  loginWithEmail,
   logout,
   observeAuthProfile,
-  registerWithEmail,
   removeUserProfilePicture,
-  resetPassword,
+  signInWithMicrosoft,
   updateUserPersonalization,
   uploadUserProfilePicture,
-  type AuthCredentials,
   type UserPreferences,
 } from "../firebase/auth";
 import {
@@ -23,9 +20,6 @@ import {
   type TranslationKey,
 } from "../utils/i18n";
 
-type AuthAction = (credentials: AuthCredentials) => Promise<void>;
-type LoginAction = (credentials: AuthCredentials) => Promise<DbUser>;
-
 type AuthContextValue = {
   user: DbUser | null;
   busy: boolean;
@@ -34,9 +28,7 @@ type AuthContextValue = {
   clearError: () => void;
   setLanguage: (language: Language) => void;
   t: (key: TranslationKey, replacements?: Record<string, string | number>) => string;
-  login: LoginAction;
-  register: AuthAction;
-  sendResetEmail: (email: string) => Promise<unknown>;
+  signInWithMicrosoft: () => Promise<DbUser>;
   signOut: () => Promise<void>;
   removeProfilePicture: () => Promise<void>;
   updatePersonalization: (update: { name: string; preferences?: Partial<UserPreferences>; photoFile?: File | null }) => Promise<void>;
@@ -59,8 +51,24 @@ function toFriendlyAuthError(error: unknown, language: Language) {
 
   const message = error.message;
 
+  if (message.includes("auth/popup-closed-by-user") || message.includes("auth/cancelled-popup-request")) {
+    return language === "az" ? "Microsoft girişi tamamlanmadı." : "Microsoft sign-in was not completed.";
+  }
+
+  if (message.includes("auth/popup-blocked")) {
+    return language === "az"
+      ? "Brauzer Microsoft giriş pəncərəsini blokladı. Popup icazəsi verib yenidən cəhd edin."
+      : "The browser blocked the Microsoft sign-in popup. Allow popups and try again.";
+  }
+
+  if (message.includes("auth/account-exists-with-different-credential")) {
+    return language === "az"
+      ? "Bu e-poçt başqa giriş üsulu ilə mövcuddur. Firebase-də Microsoft provayderini həmin hesabla əlaqələndirin."
+      : "This email already exists with another sign-in method. Link the Microsoft provider to that Firebase account.";
+  }
+
   if (message.includes("auth/invalid-credential")) {
-    return language === "az" ? "E-poçt və ya şifrə yanlışdır." : "Email or password is incorrect.";
+    return language === "az" ? "Microsoft giriş məlumatları qəbul edilmədi." : "Microsoft sign-in credentials were rejected.";
   }
 
   if (message.includes("auth/email-already-in-use")) {
@@ -165,17 +173,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login: LoginAction = async (credentials) => {
-    const profile = await runAuthAction(() => loginWithEmail(credentials));
+  const handleMicrosoftSignIn = async () => {
+    const profile = await runAuthAction(() => signInWithMicrosoft(language));
     setUser(profile);
     return profile;
   };
-
-  const register: AuthAction = async (credentials) => {
-    await runAuthAction(() => registerWithEmail(credentials, language));
-  };
-
-  const sendResetEmail = (email: string) => runAuthAction(() => resetPassword(email));
 
   const signOut = async () => {
     await runAuthAction(logout);
@@ -218,9 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearError: () => setError(null),
       setLanguage,
       t: (key: TranslationKey, replacements?: Record<string, string | number>) => translate(language, key, replacements),
-      login,
-      register,
-      sendResetEmail,
+      signInWithMicrosoft: handleMicrosoftSignIn,
       signOut,
       removeProfilePicture,
       updatePersonalization,

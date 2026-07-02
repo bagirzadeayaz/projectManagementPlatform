@@ -7,7 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useProjectUsers } from "../hooks/useProjectUsers";
 import { useProjects } from "../hooks/useProjects";
-import { PROJECT_STATUSES, TASK_STATUSES, type Project, type ProjectTask } from "../services/project.service";
+import { PROJECT_STATUSES, TASK_PRIORITIES, TASK_STATUSES, type Project, type ProjectTask } from "../services/project.service";
 import type { ProjectUser } from "../services/user.service";
 import { getProjectStatusLabel, getTaskPriorityLabel } from "../utils/labels";
 import { isAdminRole } from "../utils/roles";
@@ -869,6 +869,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [priorityFilter, setPriorityFilter] = useState("all");
   const [projectSort, setProjectSort] = useState<ProjectSort>("deadline-asc");
 
   if (!user) {
@@ -935,8 +936,9 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
 
     return `${project.name} ${task.title} ${task.description} ${task.status} ${getTaskPriorityLabel(task.priority, language)} ${task.priority} ${task.deadline}`.toLowerCase().includes(normalizedSearchQuery);
   };
-  const filteredUserTaskItems = activeScopedUserTaskItems.filter(matchesTaskSearch);
-  const filteredArchiveTaskItems = archivedScopedTaskItems.filter(matchesTaskSearch);
+  const matchesTaskPriority = ({ task }: UserTaskItem) => priorityFilter === "all" || task.priority === priorityFilter;
+  const filteredUserTaskItems = activeScopedUserTaskItems.filter(matchesTaskPriority).filter(matchesTaskSearch);
+  const filteredArchiveTaskItems = archivedScopedTaskItems.filter(matchesTaskPriority).filter(matchesTaskSearch);
   const showingStatistics = isAdminStatisticsView;
   const handleUserProjectFilterChange = (nextProjectId: string) => {
     const nextSearchParams = new URLSearchParams(searchParams.toString());
@@ -982,7 +984,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
               </Button>
             </CardHeader>
             <Separator />
-            <CardContent className="project-filters archive-control-content" aria-label={`${t("projects")}, ${t("search")}`}>
+            <CardContent className="project-filters archive-control-content" aria-label={`${t("projects")}, ${t("priority")}, ${t("search")}`}>
               <FieldLabel>
                 <span>{t("projects")}</span>
                 <Select onChange={(event) => handleUserProjectFilterChange(event.target.value)} value={projectFilterId}>
@@ -990,6 +992,18 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
                   {userProjectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel>
+                <span>{t("priority")}</span>
+                <Select onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}>
+                  <option value="all">{t("allPriorities")}</option>
+                  {TASK_PRIORITIES.map((taskPriority) => (
+                    <option key={taskPriority} value={taskPriority}>
+                      {getTaskPriorityLabel(taskPriority, language)}
                     </option>
                   ))}
                 </Select>
@@ -1073,7 +1087,7 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
               </Button>
             </section>
             <Separator />
-            <section className="project-filters" aria-label={`${t("projects")}, ${t("search")}`}>
+            <section className="project-filters" aria-label={`${t("projects")}, ${t("priority")}, ${t("search")}`}>
               <FieldLabel>
                 <span>{t("projects")}</span>
                 <Select onChange={(event) => handleUserProjectFilterChange(event.target.value)} value={projectFilterId}>
@@ -1081,6 +1095,18 @@ export function ProjectsDashboard({ view = "all" }: { view?: ProjectsDashboardVi
                   {userProjectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+
+              <FieldLabel>
+                <span>{t("priority")}</span>
+                <Select onChange={(event) => setPriorityFilter(event.target.value)} value={priorityFilter}>
+                  <option value="all">{t("allPriorities")}</option>
+                  {TASK_PRIORITIES.map((taskPriority) => (
+                    <option key={taskPriority} value={taskPriority}>
+                      {getTaskPriorityLabel(taskPriority, language)}
                     </option>
                   ))}
                 </Select>
